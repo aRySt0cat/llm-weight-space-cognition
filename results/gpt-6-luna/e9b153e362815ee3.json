@@ -1,0 +1,1 @@
+{"model":"gpt-6-luna","effort":"medium","id":"e9b153e362815ee3","agent":"/root/run_luna/t16","status":"completed","delivery_verified":true,"prompt_sha256":"28b5b86f4142b5e95b9956121c9192949931db5181fb2ba39094610701c23fac","raw":"{\"answer\":{\"digit\":3},\"receipts\":[\"23496ffd\",\"1b763a8d\",\"b21937a0\",\"1df81edf\"]}\n"}

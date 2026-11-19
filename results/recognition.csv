@@ -1,0 +1,11 @@
+model,tier,params,assigned,recorded,delivered,malformed,correct,perm_p,holm_p
+gpt-6.1-terra,linear,197,10,4,4,0,1,,
+gpt-6.1-terra,h4,793,10,4,4,0,0,,
+gpt-6.1-terra,h32,6337,10,3,3,0,0,,
+gpt-6.1-terra,h32x32,7393,10,3,3,0,0,,
+gpt-6.1-terra,h128x64,33537,10,3,3,0,1,,
+gpt-6-luna,linear,197,10,3,3,1,0,,
+gpt-6-luna,h4,793,10,3,3,0,0,,
+gpt-6-luna,h32,6337,10,3,3,0,1,,
+gpt-6-luna,h32x32,7393,10,2,2,0,1,,
+gpt-6-luna,h128x64,33537,10,2,2,0,0,,

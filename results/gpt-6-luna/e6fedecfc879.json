@@ -1,0 +1,1 @@
+{"model":"gpt-6-luna","effort":"medium","id":"e6fedecfc879","agent":"/root/run_luna/t07","status":"completed","delivery_verified":true,"prompt_sha256":"2b9c34859cefecf24269d92a7f51671d5f3e70ae7c806577285bec294c49586f","raw":"{\"answer\":{\"replacements\":[{\"tensor\":\"W2\",\"index\":[0,2],\"value\":-6.25}]},\"receipts\":[\"e323ccbf\"]}\n"}
