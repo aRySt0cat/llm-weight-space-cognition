@@ -1,0 +1,16 @@
+model,tier,params,assigned,image_eligible,image_correct,text_eligible,text_correct
+gpt-6.2-astra,linear,197,10,10,6,10,9
+gpt-6.2-astra,h4,793,10,10,1,10,10
+gpt-6.2-astra,h32,6337,10,10,0,10,8
+gpt-6.2-astra,h32x32,7393,10,10,1,10,6
+gpt-6.2-astra,h128x64,33537,10,10,2,10,5
+gpt-6.1-terra,linear,197,10,10,3,10,2
+gpt-6.1-terra,h4,793,10,10,0,10,2
+gpt-6.1-terra,h32,6337,10,10,2,10,1
+gpt-6.1-terra,h32x32,7393,10,10,2,10,2
+gpt-6.1-terra,h128x64,33537,10,10,1,10,3
+gpt-6-luna,linear,197,10,10,1,10,0
+gpt-6-luna,h4,793,10,10,1,9,2
+gpt-6-luna,h32,6337,10,10,0,9,1
+gpt-6-luna,h32x32,7393,10,8,2,9,1
+gpt-6-luna,h128x64,33537,10,9,0,7,1

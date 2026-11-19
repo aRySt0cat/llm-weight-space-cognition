@@ -476,6 +476,29 @@
         color: var(--teal);
         text-underline-offset: 3px;
       }
+      .visual-protocol { display: grid; grid-template-columns: 420px 1fr; gap: 48px; margin-top: 23px; align-items: center; }
+      .whole-packet { text-align: center; }
+      .whole-packet img { display: block; height: 380px; margin: 0 auto 7px; border: 1px solid var(--rule); }
+      .packet-answers { background: var(--tint); padding: 8px 17px; margin-top: 12px; font-size: 19px; }
+      .visual-protocol p { font-size: 21px; line-height: 1.5; margin: 9px 0; }
+      .matrix-zoom { margin: 18px 0 12px; }
+      .matrix-zoom img { width: 420px; height: 120px; border: 1px solid var(--rule); image-rendering: pixelated; }
+      .color-legend { display: grid; width: 220px; grid-template-columns: 1fr 1fr 1fr; font-size: 16px; color: var(--muted); }
+      .color-legend i { height: 10px; grid-column: 1 / -1; border: 1px solid var(--rule); background: linear-gradient(to right, blue, white, red); }
+      .color-legend span:nth-child(3) { text-align: center; }
+      .color-legend span:last-child { text-align: right; }
+      .matrix-scores { margin: 25px 0 17px; }
+      .matrix-scores th { font-size: 20px; }
+      .matrix-scores td { padding-top: 12px; padding-bottom: 12px; }
+      .matrix-scores b { color: var(--teal); }
+      .baseline { color: var(--muted); }
+      .pairing { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin: 38px 0 18px; }
+      .pairing h3 { font-size: 24px; margin-bottom: 10px; }
+      .paired-key { display: flex; gap: 18px; font-size: 16px; }
+      .paired-key span::before { content: ""; width: 12px; height: 12px; background: #64758c; display: inline-block; margin-right: 6px; }
+      .paired-key span:last-child::before { background: var(--teal); }
+      .paired-bars { width: 100%; display: block; margin-top: 8px; }
+      .pairing td { padding-top: 18px; padding-bottom: 18px; }
       @media print {
         @page {
           size: 320mm 180mm;

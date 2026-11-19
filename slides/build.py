@@ -162,6 +162,125 @@ def accuracy_chart(recog, params):
     return "".join(out) + "</svg>"
 
 
+def paired_accuracy_chart(paired):
+    parts = [
+        '<svg class="paired-bars" viewBox="0 0 550 245" role="img"><title>共通問題での正答率と正答数</title>'
+    ]
+    for i, (model, name) in enumerate(zip(MODELS, SHORT)):
+        row = paired[model]
+        common = int(row["common"])
+        y = 21 + 79 * i
+        parts.append(
+            f'<text x="0" y="{y + 19}" fill="#172b32" font-size="18">{name}</text>'
+        )
+        for j, (key, color) in enumerate(
+            (("text_only", "#64758c"), ("image_only", "#006858"))
+        ):
+            correct = int(row["both"]) + int(row[key])
+            width = 320 * correct / common if common else 0
+            bar_y = y + 22 * j - 10
+            parts.extend(
+                [
+                    f'<rect x="110" y="{bar_y}" width="320" height="16" fill="#e5e9e7"/>',
+                    f'<rect x="110" y="{bar_y}" width="{width:.2f}" height="16" fill="{color}"/>',
+                    f'<text x="440" y="{bar_y + 14}" font-size="18" fill="#172b32">{ratio(correct, common)}</text>',
+                ]
+            )
+    return "".join(parts) + "</svg>"
+
+
+def add_image_slides(add, params, draft):
+    # The image condition uses the same checkpoint as the running text example.
+    folder = ROOT / "image_weights"
+
+    def image_table(name):
+        with (folder / name).open() as f:
+            return list(csv.DictReader(f))
+
+    case_answers = ""
+    if not draft or (folder / "trials.csv").is_file():
+        sample = {
+            r["model"]: r for r in image_table("trials.csv") if r["source"] == EXAMPLE
+        }
+        guesses = "　".join(
+            f"{name}「{sample[m]['guess'] if sample[m]['eligible'] == 'True' and sample[m]['guess'] else '無効・除外'}」"
+            for m, name in zip(MODELS, SHORT)
+        )
+        case_answers = (
+            f'<p class="packet-answers"><b>この「7」の分類器への回答</b>　{guesses}</p>'
+        )
+    packet = next(r for r in lines(folder / "schedule.jsonl") if r["source"] == EXAMPLE)
+    image_path = folder / "images" / (packet["id"] + ".png")
+    matrix_png = "data:image/png;base64," + base64.b64encode(
+        image_path.read_bytes()
+    ).decode("ascii")
+    # Original layer 1 starts at x=16, y=37, with 4x4 display pixels per coefficient.
+    with Image.open(image_path) as im:
+        zoom = png(np.asarray(im.crop((16, 37, 16 + 42 * 4, 37 + 12 * 4))))
+    add(
+        "画像入力　実験設定",
+        f"""<h2>今度は、全層の重みを画像で渡す</h2>
+<p class="intro">同じ50個の分類器を使用。各モデル・各問で新しいコンテキストを用意し、画像と読み方だけを提示した。</p>
+<div class="visual-protocol"><figure class="whole-packet"><a href="{REPO}/blob/main/image_weights/images/{packet["id"]}.png"><img src="{matrix_png}" alt="実際に渡した3層分の重みとバイアス"></a><figcaption>33,537パラメータの出題画像（クリックで拡大）</figcaption></figure>
+<div><h3>第1層は、入力196列 × 出力128行</h3><p>1行が1ユニットの重み。右端の別列がバイアス。入力は14 × 14画素を行順に並べた。</p>
+<figure class="matrix-zoom"><img src="{zoom}" alt="第1層左上、42入力・12出力の重みの拡大"><figcaption>第1層左上の42列 × 12行</figcaption></figure>
+<div class="color-legend"><i></i><span>負</span><span>0</span><span>正</span></div>
+<p>各層で重みとバイアスに共通の色尺度を使い、負・正を各255段階で表した。</p></div></div>{case_answers}""",
+    )
+
+    if draft and not all(
+        (folder / name).is_file() for name in ("sizes.csv", "paired.csv")
+    ):
+        return
+
+    sized = {(r["model"], r["tier"]): r for r in image_table("sizes.csv")}
+    paired = {r["model"]: r for r in image_table("paired.csv")}
+    size_rows = []
+    for tier in TIERS:
+        cells = [f"{params[tier]:,}"]
+        for model in MODELS:
+            r = sized[model, tier]
+            cells.append(
+                f'<span class="baseline">{r["text_correct"]}/{r["text_eligible"]}</span> → <b>{r["image_correct"]}/{r["image_eligible"]}</b>'
+            )
+        size_rows.append(cells)
+    image_total = "　　".join(
+        f"{name} <b>{paired[m]['image_correct']}/{paired[m]['image_eligible']}</b>"
+        for m, name in zip(MODELS, SHORT)
+    )
+    linear = sized[MODELS[0], "linear"]
+    hidden_hits = int(paired[MODELS[0]]["image_correct"]) - int(linear["image_correct"])
+    hidden_n = int(paired[MODELS[0]]["image_eligible"]) - int(linear["image_eligible"])
+    add(
+        "画像入力　構成別の結果",
+        f"""<h2>画像での Astra は線形 {linear["image_correct"]}/{linear["image_eligible"]}、隠れ層あり {hidden_hits}/{hidden_n}</h2>
+<p class="intro">各セルは <span class="baseline">数値列</span> → <b>画像</b>。分子は正答数、分母はその条件で手順に適合した問題数。</p>
+<div class="matrix-scores">{matrix_table(["パラメータ数", *SHORT], size_rows)}</div>
+<p class="finding">画像での合計　{image_total}</p>
+<p class="fine">Luna の画像条件で除外した3問は、画像の受領失敗2問と追加送信1問。全割当を分母にすると4/50。 <a href="{REPO}/blob/main/image_weights/trials.csv">1問ごとの回答</a></p>""",
+    )
+    paired_rows = []
+    for model, name in zip(MODELS, SHORT):
+        r = paired[model]
+        paired_rows.append(
+            [
+                name,
+                r["text_only"],
+                r["image_only"],
+                f"{float(r['paired_p_holm']):.3g}",
+            ]
+        )
+    add(
+        "画像入力　同じ問題どうしの比較",
+        f"""<h2>同じ問題で、数値列と画像の正答を比べる</h2>
+<p class="intro">両条件で採点できた分類器に絞ると、Astra は数値列38/50、画像10/50。Terra と Luna では有意な差は出なかった。</p>
+<div class="pairing"><div><h3>共通問題での正答数 / 問題数</h3><div class="paired-key"><span>数値列</span><span>画像</span></div>{paired_accuracy_chart(paired)}</div>
+<div><h3>片方の条件だけで正答した問題数</h3>{matrix_table(["モデル", "数値列のみ", "画像のみ", "補正 p 値"], paired_rows)}
+<p class="fine">両側の正確 McNemar 検定。3モデルで Holm 補正。各問・各条件につき1回答。</p></div></div>
+<p class="bottom-note">数値列は14画素ごとに改行し、画像は196画素を横1列に配置した。色への丸めも加わるため、比較の対象はこの2つの表示方法。 <a href="{REPO}/blob/main/image_weights/REPORT.md">集計結果</a></p>""",
+    )
+
+
 def build(archive, output, draft):
     manifest = lines(ROOT / "fixtures/manifest.jsonl")
     recog = {(r["model"], r["tier"]): r for r in csv_rows("recognition")}
@@ -197,7 +316,7 @@ def build(archive, output, draft):
         "2026.11.19　勉強会",
         f"""<div class="cover-layout"><div>
 <h1>LLM は<em>重み</em>から<br>数字を読めるか</h1>
-<p class="intro">「7」とそれ以外を見分けるよう学習したネット。<br>重みの数値だけを読んで「7」と答えられるか。</p>
+<p class="intro">「7」とそれ以外を見分けるよう学習したネット。<br>重みを数値列や画像で示すと、「7」と答えられるか。</p>
 <p class="cover-models">GPT-6.2-astra　/　GPT-6.1-terra　/　GPT-6-luna</p></div>
 <figure class="digit-plate"><div class="digit-grid">{"".join(examples)}</div><figcaption>MNIST のテスト画像　28 × 28 画素</figcaption></figure></div>""",
         "cover",
@@ -205,7 +324,7 @@ def build(archive, output, draft):
 
     add(
         "実験設定",
-        f"""<h2>画像で学習し、重みだけを出題する</h2>
+        f"""<h2>画像で学習し、重みの数値列を出題する</h2>
 <p class="intro">各分類器が学習するのは「ある数字」と「それ以外」を分ける二値分類。</p>
 <div class="flow"><figure class="center"><div class="image-tile">{examples[7]}</div><figcaption>28 × 28 画素</figcaption></figure><div class="flow-arrow">→</div>
 <figure class="center"><div class="image-tile">{ink_image(pooled, "同じ7を2×2の平均で14×14に縮小")}</div><figcaption>14 × 14 画素<br>（2 × 2 の平均）</figcaption></figure><div class="flow-arrow">→</div>
@@ -233,7 +352,7 @@ def build(archive, output, draft):
 <div class="conditions"><h3>各問の条件</h3><dl>
 <dt>学習画像</dt><dd>対象数字5,000枚と、それ以外5,000枚。</dd>
 <dt>LLMへの入力</dt><dd>英語の設問と全パラメータ。毎回新しいコンテキストで、正解や過去の回答は渡さない。</dd>
-<dt>回答方法</dt><dd>推論設定は medium。許可した操作は問題文の表示のみ。共有環境での全操作の独立監査は未実施。</dd></dl></div></div>
+<dt>数値列条件の回答方法</dt><dd>推論設定は medium。許可した操作は問題文の表示のみ。共有環境での全操作の独立監査は未実施。</dd></dl></div></div>
 <p class="bottom-note">重みは有効数字最大5桁。最大の問題文は292,204バイト（参考値 130,669 トークン）。</p>""",
     )
 
@@ -266,7 +385,7 @@ def build(archive, output, draft):
     )
     add(
         "数字の同定　MNIST",
-        f"""<h2>重みから対象数字を当てた割合</h2>
+        f"""<h2>重みの数値列から対象数字を当てた割合</h2>
 <p class="intro">棒は正答率。棒の上は「正答数 / 手順に適合した問題数」。各構成の割当は10問。</p>
 <div class="chart-top"><div class="legend">{legend}</div><p>破線は10択の偶然正答率</p></div>
 {accuracy_chart(recog, params)}<div class="totals"><strong>全サイズ合計</strong>{overall}</div>
@@ -287,7 +406,7 @@ def build(archive, output, draft):
 <div class="case"><figure><div class="image-tile">{examples[7]}</div><figcaption>学習対象の数字（解説用）</figcaption></figure>
 <div>{matrix_table(["モデル", "最終回答の digit 欄"], case_rows)}
 <p class="fine">3モデルとも、全{example_case["parts"]}片の受領符号が一致。表の回答から元の記録を開ける。</p></div></div>
-<p class="finding">出題時に「数字を1つ、理由は書かずに」と指定した。保存した150件の最終回答には、候補を比較した経過や判断理由の説明はない。</p>
+<p class="finding">出題時に「数字を1つ、理由は書かずに」と指定した。数値列での150件の最終回答には、候補を比較した経過や判断理由の説明はない。</p>
 <p class="sources"><a href="{REPO}/blob/main/fixtures/prompts/{EXAMPLE}.txt">この分類器の設問と全パラメータ</a>　<a href="{REPO}/blob/main/trials.py">回答形式の指示</a></p>""",
     )
 
@@ -327,7 +446,7 @@ def build(archive, output, draft):
 <p class="map-key"><i class="neg"></i>負 <i class="pos"></i>正　色の濃さは重みの大きさ（共通尺度）</p></div>
 <div><h3>この2問での回答</h3>{matrix_table(["モデル", "対象 0", "対象 8"], comparison)}
 <p class="fine">枠は上から7行目、左から8列目。他の画素を固定してここにインクを足すと、「0」のスコアは下がり、「8」のスコアは上がる。</p></div></div>
-<p class="bottom-note">色は発表用に実験者が付けた。この位置を LLM が判断に使ったかは、回答記録からは分からない。</p>""",
+<p class="bottom-note">数値列の実験では、この図は LLM に見せていない。この位置を LLM が判断に使ったかは、回答記録からは分からない。</p>""",
     )
 
     astra = {
@@ -374,6 +493,8 @@ def build(archive, output, draft):
 <p class="fine">別の6件では Luna が運営役に追加送信し、返信はなかった。この6件は集計から除外した。　<a href="{REPO}/blob/main/results/deviations.jsonl">送信の記録</a></p>
 <p class="bottom-note">回答の偏りは観測できる。その数字を選ぶまでに、ほかの候補を検討したかは記録されていない。　<a href="{REPO}/blob/main/results/trials.csv">採点表</a></p>""",
     )
+
+    add_image_slides(add, params, draft)
 
     template = (HERE / "template.html").read_text()
     markup = "\n".join(

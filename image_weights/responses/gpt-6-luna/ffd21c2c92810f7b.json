@@ -1,0 +1,1 @@
+{"model": "gpt-6-luna", "effort": "medium", "id": "ffd21c2c92810f7b", "agent": "/root/run_luna/i50", "image_sha256": "3dc14925127f1f81986dc514625c773144b1354818cabd79c283ca908c59b0e3", "raw": "{\"digit\": 7, \"receipt\": \"2012dd21\"}"}

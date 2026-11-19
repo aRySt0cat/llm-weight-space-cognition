@@ -1,10 +1,14 @@
-# LLM は数値列だけで学習済みネットワークを読めるか
+# LLM は重みから MNIST 分類器の対象数字を読めるか
 
-MNIST 分類器の対象数字を、重みだけから答えられたのは **gpt-6.2-astra が38/50、gpt-6.1-terra が10/50、gpt-6-luna が5/44**。同じ72問を各モデルの独立コンテキストで実施した。数字の同定50問、7セグメント同定10問、4ビット入力の編集4問、MNIST の出力層編集8問。推論設定はすべて medium。
+MNIST 分類器の対象数字を、重みの数値列から答えられたのは **gpt-6.2-astra が38/50、gpt-6.1-terra が10/50、gpt-6-luna が5/44**。同じ72問を各モデルの独立コンテキストで実施した。数字の同定50問、7セグメント同定10問、4ビット入力の編集4問、MNIST の出力層編集8問。推論設定はすべて medium。
 
 [勉強会スライド（HTML）](slides/index.html) ・ [3モデルの結果と考察](results/REPORT.md) ・ [全問の採点表](results/trials.csv) ・ [事前手順](PROTOCOL.md) ・ [Astra の追加条件](ASTRA_PROTOCOL.md)
 
 スライドは画像とSVGを埋め込んだ単一のHTMLファイル。ブラウザで開き、左右キーで移動、Fキーで全画面表示。印刷時は1枚につき1ページになる。[HTMLをダウンロード](https://github.com/aRySt0cat/llm-weight-space-cognition/raw/refs/heads/main/slides/index.html)
+
+## 重みを画像で渡す追加実験
+
+同じ50個の MNIST 分類器について、重み行列とバイアスを層ごとの赤・白・青の画像にし、新しいコンテキストで3モデルに対象数字を答えさせた。画像での正答は Astra **10/50**、Terra **8/50**、Luna **4/47**。最大構成の第1層は入力196列 × 出力128行。[画像条件と数値列条件の比較](image_weights/REPORT.md) ・ [50枚の出題画像](image_weights/images/) ・ [事前に固定した条件](image_weights/PROTOCOL.md)
 
 ## 数字の同定
 
@@ -63,6 +67,9 @@ python inversion.py score --data /tmp/weight-space/mnist.npz
 python inversion.py score-retries --data /tmp/weight-space/mnist.npz
 python analyze.py
 python plot_results.py
+python image_weights/study.py stage
+python image_weights/verify_images.py --data /tmp/weight-space/mnist.npz
+python image_weights/score.py
 python slides/build.py --data /tmp/weight-space/mnist.npz
 python controls.py illustrate --data /tmp/weight-space/mnist.npz
 ```

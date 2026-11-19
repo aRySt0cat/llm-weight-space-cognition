@@ -1,0 +1,1 @@
+{"model": "gpt-6.1-terra", "effort": "medium", "id": "6a41a146f14e082b", "agent": "/root/run_terra/i12", "image_sha256": "6fa42fd76b04436e249bb5616d103b1b6874a8d152e82403b743b3057a02c0ed", "raw": "{\"digit\": 1, \"receipt\": \"9b60db91\"}"}
