@@ -1,0 +1,21 @@
+This binary classifier was trained to recognize one MNIST digit against all other digits. Infer the target digit (0 through 9) from the parameters below. Return only a JSON object of the form {"digit": n}. Use no tools, code execution, calculators, or external aids.
+
+The input is a 14 by 14 grayscale image made by averaging non-overlapping 2 by 2 blocks in the original MNIST image. Ink is 1 and background is 0. Flatten it in row-major order, left to right and top to bottom. The widths line gives the input and successive layer sizes. Each layer lists its output units in order. For each unit the bias line is followed by the incoming weights in input order. Input-facing weights use one line per image row. Each hidden layer applies ReLU after its affine transform. The final unit produces a logit; a positive logit favors the target digit.
+
+widths 196 1
+layer 1
+bias 1.6026
+0 0 0 -.0025963 -1.5339e-05 -.01758 -.0055144 -.12475 -.014833 -.10956 -.06374 0 0 0
+0 .0036756 .052184 -.096552 -.33938 -1.0847 -1.0447 -1.5215 -1.3892 -.70757 -.64665 -.71304 -.17072 0
+0 .044936 -.38959 -1.3821 -1.0766 -.24481 -.88338 -.23133 -.24893 -.062644 .65048 1.1694 1.4661 -.0025384
+-.00016247 -.67667 -1.054 -.32933 .094915 .13219 -.15647 -.57262 -.15253 .21479 .66824 .96903 2.7214 .10466
+-.001149 -1.4036 -2.1813 -.36467 .41991 .78332 -.010254 -1.2064 -.74428 -.65348 -.11245 .96681 5.0084 .56012
+-.00010212 -.8536 -.14866 1.3387 .51514 1.1563 1.523 .0060219 -.95611 -1.4636 -2.6171 -.61086 5.9666 .58372
+0 -.13532 .50626 .33335 .3226 .83638 1.3812 -.56806 -1.1163 -.62291 -1.0137 -6.3167 -4.0318 .30458
+.0254 .20784 .11427 -1.4894 .39475 1.0806 .16365 -1.2231 -.92442 -.87104 -.91217 -.3108 .27517 -.23052
+0 .26216 .46415 -.087718 -1.378 -1.0052 -1.1795 -1.0447 -.41335 .21077 .24631 .13526 1.4432 -.27832
+0 -.12404 1.0041 1.0194 .11049 -.83788 -.58807 .027642 .28717 -.41823 .19555 .71105 -.67388 -.66164
+0 -1.0106 .22674 -.12306 .50798 .64873 .13941 -.82917 .2636 .60635 .32909 2.1666 -.14361 .016043
+0 -.36171 .42674 -.4259 .13835 .022317 .20942 -.07207 -.40995 .61102 .46966 .23873 .61275 .11807
+0 -.016015 -.014609 -.28468 .1326 -.16529 .50177 .38831 -.6141 -.42514 -.70669 .022929 -.037881 0
+0 0 -.0089345 -.86912 -.91213 -.69242 -1.0941 -1.6699 -1.0868 -1.0312 -.43193 -.29455 0 0

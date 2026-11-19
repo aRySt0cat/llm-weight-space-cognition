@@ -1,0 +1,12 @@
+Edit the numerical weights of this trained network.
+
+The input x is a column vector of four bits. All indices start at zero. The hidden vector is h = ReLU(W1 x + b1), where ReLU acts on each entry. The two numerical outputs are y = W2 h + b2.
+
+W1 = [[0.8, 0.0, 0.0, 0.0], [0.0, 0.0, -1.25, 0.0], [0.0, 0.0, 0.0, -5.0], [0.0, 2.5, 0.0, 0.0]]
+b1 = [0.0, 1.25, 5.0, 0.0]
+W2 = [[-5.0, -4.0, -1.4, 1.2], [1.25, -1.6, -0.6, -2.4]]
+b2 = [15.0, 9.0]
+
+For every input, output 0 must equal its original value on the input with bit x[0] inverted. Output 1 must retain its original value on that same unmodified input. This must hold for all 16 inputs, to absolute tolerance 0.001 per output.
+
+Replace at most two scalar entries in W2 or b2. Return only one JSON object with the single key "replacements". Its value must be an array of zero, one or two objects, each with exactly the keys "tensor", "index" and "value". Use "W2" with [output_row, hidden_column], or "b2" with [output_row]. Indices must be in-range integers. Supply a finite number for each new absolute value. Coordinates must be distinct.
