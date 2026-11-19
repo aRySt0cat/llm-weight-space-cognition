@@ -1,0 +1,6 @@
+This trained binary classifier recognizes one decimal digit on a seven-segment display. Which digit (0 through 9) does it recognize? Return only a JSON object of the form {"digit": n}. Use no tools, code execution, calculators, or external aids.
+
+Each input is 1 if its segment is lit and 0 if it is dark. In order, the segments are a (top), b (upper right), c (lower right), d (bottom), e (lower left), f (upper left), and g (middle). The score is the bias plus the dot product of the weights and inputs in this order. A score greater than zero means the classifier recognizes the pattern.
+
+weights 2 2 2 -2 -2 -2 -2
+bias -5
