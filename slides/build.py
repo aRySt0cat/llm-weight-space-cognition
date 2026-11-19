@@ -3,6 +3,7 @@
 import argparse
 import base64
 import csv
+from collections import Counter
 from html import escape
 from io import BytesIO
 import json
@@ -16,8 +17,7 @@ from PIL import Image
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
-from editing import forward, patch_network
-from prepare import dataset_path, logits, parse_prompt, pool_images
+from prepare import dataset_path, parse_prompt
 from trials import TIERS, lines
 
 MODELS = ["gpt-6.2-astra", "gpt-6.1-terra", "gpt-6-luna"]
@@ -43,11 +43,6 @@ def ratio(hits, n):
     return f"{hits}/{n}" if n else "—"
 
 
-def example_answer(uid):
-    record = json.loads((ROOT / "results/gpt-6.1-terra" / (uid + ".json")).read_text())
-    return json.loads(record["raw"])["answer"]
-
-
 def png(array):
     output = BytesIO()
     Image.fromarray(array).save(output, format="PNG", optimize=True)
@@ -63,34 +58,35 @@ def ink_image(pixels, alt):
     return f'<img class="ink" src="{png(rgba)}" alt="{escape(alt)}" width="{pixels.shape[1]}" height="{pixels.shape[0]}">'
 
 
-def weight_image(manifest):
-    uid = next(r["id"] for r in manifest if r["tier"] == "linear" and r["digit"] == 7)
-    w = parse_prompt((ROOT / "fixtures/prompts" / (uid + ".txt")).read_text())[0][
-        0
-    ].reshape(14, 14)
-    w = w / np.abs(w).max()
+def weight_map(weights, scale, digit, row, col):
+    relative = weights / scale
     neutral = np.array([248, 247, 240])
-    color = np.where(w[:, :, None] >= 0, [162, 64, 36], [40, 86, 154])
-    arr = np.rint(neutral + (color - neutral) * np.abs(w[:, :, None])).astype(np.uint8)
-    return f'<img src="{png(arr)}" width="14" height="14" alt="7用の線形分類器。赤は正の重み、青は負の重み">'
+    color = np.where(relative[:, :, None] >= 0, [166, 60, 32], [37, 83, 153])
+    rgb = np.rint(neutral + (color - neutral) * np.abs(relative[:, :, None])).astype(
+        np.uint8
+    )
+    return (
+        f'<svg class="weight-map" viewBox="0 0 140 140" role="img" aria-label="「{digit}」分類器の重み。上から{row + 1}行、左から{col + 1}列目を囲む">'
+        f'<image href="{png(rgb)}" width="140" height="140" style="image-rendering:pixelated"/>'
+        f'<rect x="{col * 10}" y="{row * 10}" width="10" height="10" fill="none" stroke="#15272e" stroke-width="1.7"/></svg>'
+    )
 
 
-def net_svg(focus=False):
+def net_svg():
     xs = [50, 203, 350, 490]
     layers = [[30, 57, 105, 132], [27, 54, 108, 135], [30, 57, 105, 132], [81]]
     out = [
         '<svg class="net" viewBox="0 0 540 178" role="img" aria-label="全結合ネットワーク。入力196、隠れ層128と64、出力1。各層は一部のユニットを表示">'
     ]
     for i in range(3):
-        stroke = "#006858" if focus and i == 2 else "#a0b4ad"
         for a in layers[i]:
             for b in layers[i + 1]:
                 out.append(
-                    f'<path d="M{xs[i]} {a}L{xs[i + 1]} {b}" stroke="{stroke}" stroke-width="{2 if focus and i == 2 else 1.1}"/>'
+                    f'<path d="M{xs[i]} {a}L{xs[i + 1]} {b}" stroke="#a0b4ad" stroke-width="1.1"/>'
                 )
     for i, ys in enumerate(layers):
         for y in ys:
-            color = "#006858" if i == 3 or (i == 2 and focus) else "#ffffff"
+            color = "#006858" if i == 3 else "#ffffff"
             out.append(
                 f'<circle cx="{xs[i]}" cy="{y}" r="6.6" fill="{color}" stroke="#407366" stroke-width="1.7"/>'
             )
@@ -104,34 +100,10 @@ def net_svg(focus=False):
     return "".join(out) + "</svg>"
 
 
-def segment_svg():
-    polygons = [
-        "24,8 90,8 97,15 87,22 28,22 16,15",
-        "99,18 105,24 97,79 90,85 83,78 91,28",
-        "90,89 97,95 90,148 80,155 75,148 82,98",
-        "73,151 80,158 72,165 10,165 4,158 14,151",
-        "8,93 16,87 22,94 15,147 5,154 0,147",
-        "18,19 26,27 19,76 13,84 7,77 13,26",
-        "23,80 79,80 86,87 76,94 22,94 15,87",
-    ]
-    return (
-        '<svg viewBox="0 0 108 174" role="img" aria-label="上と右の2本が点灯した7セグメントの数字7">'
-        + "".join(
-            f'<polygon points="{p}" fill="{("#d1efcc" if i < 3 else "#375152")}"/>'
-            for i, p in enumerate(polygons)
-        )
-        + "</svg>"
-    )
-
-
 def matrix_table(headers, rows):
     thead = "".join(f'<th scope="col">{h}</th>' for h in headers)
     body = "".join("<tr>" + "".join(f"<td>{v}</td>" for v in r) + "</tr>" for r in rows)
     return f"<table><thead><tr>{thead}</tr></thead><tbody>{body}</tbody></table>"
-
-
-def model_name(index):
-    return f'<span class="model-name">{SHORT[index]}</span>'
 
 
 def accuracy_chart(recog, params):
@@ -193,24 +165,13 @@ def accuracy_chart(recog, params):
 def build(archive, output, draft):
     manifest = lines(ROOT / "fixtures/manifest.jsonl")
     recog = {(r["model"], r["tier"]): r for r in csv_rows("recognition")}
-    edits = {r["model"]: r for r in csv_rows("editing")}
-    trials, inversions, segment = (
-        csv_rows(n) for n in ["trials", "inversion", "segment"]
-    )
-    primary_schedule = lines(ROOT / "schedule.jsonl")
-    inv_schedule = lines(ROOT / "inversion/schedule.jsonl")
-    seg_schedule = lines(ROOT / "segment/schedule.jsonl")
+    trials = [r for r in csv_rows("trials") if r["tier"] in TIERS]
+    schedule = [r for r in lines(ROOT / "schedule.jsonl") if r["task"] == "digit"]
     if not draft:
-        for collection, schedule in (
-            (trials, primary_schedule),
-            (inversions, inv_schedule),
-            (segment, seg_schedule),
-        ):
-            assert {
-                (r["model"], r["id"]) for r in collection if r["status"] != "not_run"
-            } == {(m, case["id"]) for case in schedule for m in MODELS}, (
-                "Score all first passes before exporting"
-            )
+        assert {(r["model"], r["id"]) for r in trials if r["status"] != "not_run"} == {
+            (m, case["id"]) for case in schedule for m in MODELS
+        }, "Score all MNIST first passes before exporting"
+    by_case = {(r["model"], r["id"]): r for r in trials}
     tier_data = {t: [r for r in manifest if r["tier"] == t] for t in TIERS}
     params = {t: rr[0]["params"] for t, rr in tier_data.items()}
     with np.load(dataset_path(archive), allow_pickle=False) as data:
@@ -236,7 +197,7 @@ def build(archive, output, draft):
         "2026.11.19　勉強会",
         f"""<div class="cover-layout"><div>
 <h1>LLM は<em>重み</em>から<br>数字を読めるか</h1>
-<p class="intro">画像への応答からは、分類器の機能を調べられる。<br>重みだけで、その機能を推定・編集できるか。</p>
+<p class="intro">「7」とそれ以外を見分けるよう学習したネット。<br>重みの数値だけを読んで「7」と答えられるか。</p>
 <p class="cover-models">GPT-6.2-astra　/　GPT-6.1-terra　/　GPT-6-luna</p></div>
 <figure class="digit-plate"><div class="digit-grid">{"".join(examples)}</div><figcaption>MNIST のテスト画像　28 × 28 画素</figcaption></figure></div>""",
         "cover",
@@ -252,8 +213,7 @@ def build(archive, output, draft):
 <div class="data-strip"><div class="sample"><h3>LLM に与える情報</h3><pre>widths 196 128 64 1
 {escape(excerpt)}</pre><p class="caption">層の幅と数値列の抜粋。実験では全重み・全バイアスを提示。</p></div>
 <div class="question"><h3>どの数字を検出する？</h3><p>回答は 0〜9 の1個。<br>LLMには画像や出力例を渡さない。</p></div></div>
-<p class="bottom-note probe-note"><b>実験者が Python で行った別の確認</b>　各分類器に各数字5枚の画像を入力。数字ごとに判定スコア（ロジット）を平均し、最大の数字を選ぶと50個すべてで正解した。画像もスコアも LLM には渡していない。</p>""",
-        "probe-slide",
+<p class="bottom-note">各設問には、インクが 1、背景が 0 であることと、画素・重みの並び順も記した。</p>""",
     )
 
     arch_rows = [
@@ -264,20 +224,16 @@ def build(archive, output, draft):
         )
         for i, t in enumerate(TIERS)
     ]
-    tasks = [
-        ("MNIST の対象数字を同定", 50),
-        ("7セグメントの対象数字を同定", 10),
-        ("4ビット入力の局所編集", 4),
-        ("MNIST の出力層を編集", 8),
-    ]
     add(
         "実験設定",
-        f"""<h2>3モデルに、同じ72問を出題</h2>
-<p class="intro">各問で新しいコンテキストを開始。推論設定は medium。許可したツール操作は問題文の表示のみ。</p>
-<div class="setup"><div><h3>学習済み MNIST 分類器</h3>{matrix_table(["各層の幅", "パラメータ数", "分類器の性能¹"], arch_rows)}
-<p class="fine">¹ 公式テスト画像1万枚での balanced accuracy。各構成10個の平均。</p></div>
-<div><h3>1モデルあたりの内訳</h3><div class="task-list">{"".join(f'<div class="task-item"><span>{a}</span><b>{b}問</b></div>' for a, b in tasks)}</div>
-<p class="methods">MNIST の同定は5構成 × 数字10種。<br>各数字につき正例5,000枚・負例5,000枚で学習。<br>共有ファイル環境で、全操作の独立監査は未実施。</p></div></div>
+        f"""<h2>3モデルに、同じ50個の分類器を出題</h2>
+<p class="intro">数字0〜9について、幅と層数の異なる5構成を学習。各モデルは1つの分類器につき1回答。</p>
+<div class="setup"><div><h3>学習したネットワーク</h3>{matrix_table(["各層の幅", "パラメータ数", "分類器の性能¹"], arch_rows)}
+<p class="fine">¹ 公式テスト画像1万枚での感度と特異度の平均。各構成10個の平均値。</p></div>
+<div class="conditions"><h3>各問の条件</h3><dl>
+<dt>学習画像</dt><dd>対象数字5,000枚と、それ以外5,000枚。</dd>
+<dt>LLMへの入力</dt><dd>英語の設問と全パラメータ。毎回新しいコンテキストで、正解や過去の回答は渡さない。</dd>
+<dt>回答方法</dt><dd>推論設定は medium。許可した操作は問題文の表示のみ。共有環境での全操作の独立監査は未実施。</dd></dl></div></div>
 <p class="bottom-note">重みは有効数字最大5桁。最大の問題文は292,204バイト（参考値 130,669 トークン）。</p>""",
     )
 
@@ -314,201 +270,109 @@ def build(archive, output, draft):
 <p class="intro">棒は正答率。棒の上は「正答数 / 手順に適合した問題数」。各構成の割当は10問。</p>
 <div class="chart-top"><div class="legend">{legend}</div><p>破線は10択の偶然正答率</p></div>
 {accuracy_chart(recog, params)}<div class="totals"><strong>全サイズ合計</strong>{overall}</div>
-<p class="fine">横軸はパラメータ数。{significance}（片側置換検定、Holm補正5%）。<br>無効回答は誤答。6-luna の許可外の送信6件まで含めると 5/50。</p>""",
+<p class="fine">横軸はパラメータ数。{significance}（片側置換検定、Holm補正5%）。<br>形式が無効な回答は誤答に数えた。6-luna の追加送信による除外6件も採点すると 5/50。</p>""",
     )
 
-    segment_id = "0a35445ba13982da"
-    seg_prompt = (ROOT / "segment/prompts" / (segment_id + ".txt")).read_text()
-    weights_line, bias_line = seg_prompt.strip().splitlines()[-2:]
-    seg_answer = example_answer(segment_id)
-    add(
-        "数字の同定　7セグメントの出題例",
-        f"""<h2>どの数字の点灯パターンを検出する？</h2>
-<p class="intro">数字ごとに専用の分類器を1個、計10個学習した。分類器への入力は7本の点灯状態（点灯1、消灯0）。</p>
-<div class="worked"><div class="sample"><h3>LLM に与えた情報（設問を和訳）</h3>
-<p>入力の並びは、上・右上・右下・下・左下・左上・中央。点灯部分の重みの合計にバイアスを足し、正なら検出。</p>
-<pre>{escape(weights_line)}
-{escape(bias_line)}</pre><p class="caption">これが1個の分類器の全8パラメータ。</p>
-<p class="ask">この分類器が検出する数字を1個答えてください。</p></div>
-<div class="explain"><div class="segment-answer"><figure class="seg-tile">{segment_svg()}</figure><div>
-<p class="small-title">6.1-terra の回答例</p><pre>{escape(json.dumps(seg_answer))}</pre></div></div>
-<h3>上・右上・右下の3本だけが点灯すると</h3><p>得点は 2 + 2 + 2 − 5 = <b>+1</b>。<br>右の2本だけの「1」では 2 + 2 − 5 = <b>−1</b>。</p></div></div>
-<p class="bottom-note">点灯図は解説用。LLM が受け取ったのは、位置の説明・計算式・8個の数値だった。</p>""",
-    )
-
-    seg_rows = []
-    for j, m in enumerate(MODELS):
-        good = [r for r in segment if r["model"] == m and r["eligible"] == "True"]
-        linear = recog[m, "linear"]
-        seg_rows.append(
-            [
-                model_name(j),
-                ratio(sum(r["correct"] == "True" for r in good), len(good)),
-                ratio(int(linear["correct"]), int(linear["delivered"])),
-            ]
-        )
-    add(
-        "数字の同定　対照課題",
-        f"""<h2>7セグメントの対象数字は全モデルが10/10</h2>
-<p class="intro">実験者は各分類器に全128通りの点灯パターンを入力し、対象のパターンだけが正の得点になることを確認した。</p>
-<div class="control"><div><div class="visual-pair">
-<figure><div class="seg-tile">{segment_svg()}</div><figcaption>7セグメントの「7」</figcaption></figure>
-<figure><div class="map-tile">{weight_image(manifest)}</div><figcaption>MNIST の「7」の重み<br>赤は正、青は負</figcaption></figure></div>
-<p class="weight-vector">+2　+2　+2　−2　−2　−2　−2</p>
-<p class="caption">上・右上・右下が +2。バイアスは −5。</p></div>
-<div>{matrix_table(["正答 / 適合", "7セグメント<br>8パラメータ", "MNIST 線形<br>197パラメータ"], seg_rows)}</div></div>
-<p class="bottom-note">2つの課題では、入力表現も重みの構造も異なる。</p>""",
-    )
-
-    local_id = "17c2926789ec"
-    local = next(r for r in lines(ROOT / "edits/manifest.jsonl") if r["id"] == local_id)
-    net = local["network"]
-    local_answer = example_answer(local_id)
-    edited_net = patch_network(net, local_answer)
-    changes = "\n".join(
-        f"{v['tensor']}[{', '.join(map(str, v['index']))}] = {v['value']}"
-        for v in local_answer["replacements"]
-    )
-    behavior = []
-    for x in ([0, 0, 0, 0], [0, 0, 0, 1]):
-        old, new = forward(net, x), forward(edited_net, x)
-        behavior.append(
-            [
-                "".join(map(str, x)),
-                *(f"{a:g} → {b:g}" for a, b in zip(old, new, strict=True)),
-            ]
-        )
-    add(
-        "数値編集　4ビットの出題例",
-        f"""<h2>4番目のビットを、片方の出力だけ逆に読む</h2>
-<p class="intro">4個の0か1を受け取り、2個の数値 y₀・y₁ を返すネット。指定した動作だけを編集できるかを試す。</p>
-<div class="worked"><div class="sample"><h3>LLM に与えた情報（実際の値を抜粋）</h3>
-<p>全30パラメータと2つの計算式を提示。<br>h = ReLU(W1 x + b1)、y = W2 h + b2。</p>
-<pre>W1[3] = {net["W1"][3]}
-b1[3] = {net["b1"][3]}
-W2[1] = {net["W2"][1]}
-b2[1] = {net["b2"][1]}</pre>
-<p class="caption">添字は0から。W は重み、b はバイアス。</p></div>
-<div class="explain"><h3>LLM への指示（和訳）</h3>
-<p>同じ入力で y₀ は元の値を保つ。y₁ だけは、4番目のビットを反転して元のネットに入れた場合の値を返すように。</p>
-<p>出力層の最大2か所について、場所と新しい値を答えてください。</p>
-<div class="answer-box"><b>6.1-terra の回答例</b><pre>{escape(changes)}</pre></div></div></div>
-<p class="bottom-note">たとえば入力が 0000 なら、y₀ は元の 0000 の値、y₁ は元の 0001 の値を返すのが目標。</p>""",
-    )
-
-    edit_rows = [
-        [
-            model_name(j),
-            ratio(int(edits[m]["correct"]), int(edits[m]["delivered"])),
-            ratio(int(edits[m]["correct_values"]), int(edits[m]["total_values"])),
-        ]
-        for j, m in enumerate(MODELS)
-    ]
-    add(
-        "数値編集　4ビット入力",
-        f"""<h2>編集後のネットを、全16入力で確かめる</h2>
-<p class="intro">採点側が回答どおりに数値を差し替え、2個の出力を計算した。表の値は出題後の検算例。</p>
-<div class="edit-grid"><div class="patch"><h3>前ページの例（編集前 → 編集後）</h3>
-{matrix_table(["入力", "y₀ を保つ", "y₁ を入れ替える"], behavior)}
-<p class="fine">y₁ への寄与は −2x₃ → −2(1 − x₃)。重み −1.6 → +1.6 とバイアス 7 → 5 で実現した。</p></div>
-<div><h3>4問の採点結果</h3>{matrix_table(["モデル", "成功 / 適合", "合致した出力値"], edit_rows)}
-<p class="fine">1問につき全16入力 × 2出力。全32値が許容誤差0.001以内で成功。</p></div></div>
-<p class="bottom-note">6-luna の失敗2問は、重みの符号を反転し、必要なバイアス変更を省略していた。</p>""",
-    )
-
-    small_seven = next(r for r in manifest if r["tier"] == "h4" and r["digit"] == 7)
-    small_layers = parse_prompt(
-        (ROOT / "fixtures/prompts" / (small_seven["id"] + ".txt")).read_text()
-    )
-    readout_id = next(
-        r["id"] for r in inv_schedule if r["source_id"] == small_seven["id"]
-    )
-    readout_answer = example_answer(readout_id)
-    w, b = small_layers[-1]
-    edited_layers = small_layers[:-1] + [
-        (
-            np.array(readout_answer["weights"]).reshape(w.shape),
-            np.array([readout_answer["bias"]]),
-        )
-    ]
-    digits = [7, 1]
-    x = pool_images(np.stack([pixels[d] for d in digits]))
-    scores = zip(digits, logits(small_layers, x), logits(edited_layers, x), strict=True)
-    score_examples = "".join(
-        f'<div class="score-example"><span class="score-image">{examples[d]}</span>'
-        f"<span>「{d}」の画像</span><b>{old:+.2f} → {new:+.2f}</b></div>"
-        for d, old, new in scores
-    )
-    add(
-        "数値編集　MNISTの出題例",
-        f"""<h2>同じ画像に対する判定を逆向きにする</h2>
-<p class="intro">ロジットは分類器の判定スコア。正なら対象数字を、負なら「それ以外」を支持する。</p>
-<div class="worked"><div class="sample"><h3>LLM に与えた情報（793パラメータの例）</h3>
-<p>層の幅、計算式、全層の重み・バイアスを提示。ここでは最後の1ユニットを抜粋。</p>
-<pre>widths 196 4 1
-layer 2
-bias {b.item():g}
-{" ".join(format(v, "g") for v in w.ravel())}</pre>
-<p class="caption">この4つの重みと1つのバイアスが編集対象。</p></div>
-<div class="explain"><h3>LLM への指示（和訳）</h3>
-<p>隠れ層を固定し、どの入力でもスコアが元の −1 倍になるように。最後の重みを元の順で全て、新しいバイアスとともに提出してください。</p>
-<div class="answer-box"><b>6.1-terra の回答例</b><pre>weights = {readout_answer["weights"]}
-bias = {readout_answer["bias"]}</pre></div></div></div>
-<p class="bottom-note">目的は、指定した判定の反転を重みの編集で実現できるかを測ること。LLM には画像も正解の数字も渡していない。</p>""",
-    )
-
-    inv_rows = []
-    for j, m in enumerate(MODELS):
-        row = [model_name(j)]
-        for t in ("h4", "h128x64"):
-            data = [r for r in inversions if r["model"] == m and r["tier"] == t]
-            row.append(
-                ratio(
-                    sum(
-                        r["delivered"] == "True" and r["exact"] == "True" for r in data
-                    ),
-                    len(data),
-                )
-            )
-        inv_rows.append(row)
-    add(
-        "数値編集　MNIST",
-        f"""<h2>編集後は、画像ごとのスコアが −1 倍になる</h2>
-<p class="intro">隠れ層の出力 h を保ち、最後の重み w とバイアス b の符号をすべて反転する。図は33,537パラメータの構成。</p>
-<div class="readout"><figure>{net_svg(True)}<div class="formula">w · h + b → (−w) · h − b</div></figure>
-<div>{matrix_table(["モデル", "793パラメータ<br>5値を編集", "33,537パラメータ<br>65値を編集"], inv_rows)}
-<p class="fine">手順に適合し全値一致した数 / 初回の割当数。<br>提出値を代入して、テスト画像1万枚でも照合。</p></div></div>
-<div class="score-strip"><h3>採点側での実測例<br><small>前ページの「7」分類器</small></h3>{score_examples}</div>
-<p class="bottom-note">最大構成の6-luna は、ほかに2件が全値一致・許可外送信、1件が未完。未完の1件は独立再試行で全値一致。</p>""",
-    )
-
-    inv_id = next(r["id"] for r in inv_schedule if r["source_id"] == EXAMPLE)
+    example_case = next(r for r in schedule if r["id"] == EXAMPLE)
     case_rows = []
-    for j, m in enumerate(MODELS):
-        rr = next(r for r in trials if r["id"] == EXAMPLE and r["model"] == m)
-        ir = next(r for r in inversions if r["id"] == inv_id and r["model"] == m)
-        guess = (
-            rr["guess"]
-            if rr["guess"]
-            else ("集計中" if rr["status"] == "not_run" else "除外・無効")
-        )
-        patch = (
-            f"{ir['matching_scalars']}/65"
-            if ir["valid_answer"] == "True"
-            else ("集計中" if ir["status"] == "not_run" else "除外・無効")
-        )
-        case_rows.append(
-            [model_name(j), guess, f'<span class="case-result">{patch}</span>']
-        )
+    for model, name in zip(MODELS, SHORT, strict=True):
+        record = by_case[model, EXAMPLE]
+        answer = json.dumps({"digit": int(record["guess"])}) if record["guess"] else "—"
+        link = f"{REPO}/blob/main/results/{model}/{EXAMPLE}.json"
+        case_rows.append([name, f'<a href="{link}"><code>{escape(answer)}</code></a>'])
     add(
-        "考察",
-        f'''<h2>同じ「7」の分類器に、2通りの問い</h2>
-<p class="intro">33,537パラメータの同一チェックポイント。数字の同定と最終層の編集は別のコンテキストで実施。</p>
-<div class="case"><figure><div class="image-tile">{examples[7]}</div><figcaption>学習した対象は「7」</figcaption></figure>
-{matrix_table(["モデル", "推定した数字", "編集で一致した数値"], case_rows)}</div>
-<p class="finding">最終層の符号反転は、その層の式から解ける。編集の成功だけでは、対象数字を読み取れたかは分からない。</p>
-<p class="fine">Astra の数字同定は最大構成で {recog[MODELS[0], "h128x64"]["correct"]}/{recog[MODELS[0], "h128x64"]["delivered"]}。各サイズ10問・1数字1ネットのため、認識できる規模の上限は定まらない。</p>
-<p class="sources"><a href="{REPO}">実験コード・データ</a>　 <a href="{REPO}/blob/main/results/REPORT.md">採点結果・除外理由</a></p>''',
+        "考察　保存された回答",
+        f"""<h2>同じ「7」の分類器に、3通りの回答</h2>
+<p class="intro">p.02 の33,537パラメータの例。各モデルが受け取った数値列と設問は同じ。</p>
+<div class="case"><figure><div class="image-tile">{examples[7]}</div><figcaption>学習対象の数字（解説用）</figcaption></figure>
+<div>{matrix_table(["モデル", "最終回答の digit 欄"], case_rows)}
+<p class="fine">3モデルとも、全{example_case["parts"]}片の受領符号が一致。表の回答から元の記録を開ける。</p></div></div>
+<p class="finding">出題時に「数字を1つ、理由は書かずに」と指定した。保存した150件の最終回答には、候補を比較した経過や判断理由の説明はない。</p>
+<p class="sources"><a href="{REPO}/blob/main/fixtures/prompts/{EXAMPLE}.txt">この分類器の設問と全パラメータ</a>　<a href="{REPO}/blob/main/trials.py">回答形式の指示</a></p>""",
+    )
+
+    # Compare the same central pixel across two linear checkpoints on one color scale.
+    row, col = 6, 7
+    linear = [r for r in manifest if r["tier"] == "linear" and r["digit"] in (0, 8)]
+    linear.sort(key=lambda r: r["digit"])
+    maps = [
+        parse_prompt((ROOT / "fixtures/prompts" / (r["id"] + ".txt")).read_text())[0][
+            0
+        ].reshape(14, 14)
+        for r in linear
+    ]
+    scale = max(np.abs(w).max() for w in maps)
+    figures = []
+    for r, w in zip(linear, maps, strict=True):
+        digit = r["digit"]
+        value = f"{w[row, col]:+.2f}".replace("-", "−")
+        figures.append(
+            f'<figure><div class="map-label">「{digit}」分類器</div>'
+            f"{weight_map(w, scale, digit, row, col)}<figcaption>枠の重み <b>{value}</b></figcaption></figure>"
+        )
+    comparison = []
+    for model, name in zip(MODELS, SHORT, strict=True):
+        cells = []
+        for r in linear:
+            trial = by_case[model, r["id"]]
+            cells.append(
+                trial["guess"] or ("無効" if trial["delivered"] == "True" else "—")
+            )
+        comparison.append([name, *cells])
+    add(
+        "考察　数値列にある手掛かり",
+        f"""<h2>「0」と「8」では、中央の画素が逆に効く</h2>
+<p class="intro">197パラメータの線形分類器では、196個の重みが14 × 14の画素と1対1に対応する。</p>
+<div class="maps-and-answers"><div><div class="map-pair">{"".join(figures)}</div>
+<p class="map-key"><i class="neg"></i>負 <i class="pos"></i>正　色の濃さは重みの大きさ（共通尺度）</p></div>
+<div><h3>この2問での回答</h3>{matrix_table(["モデル", "対象 0", "対象 8"], comparison)}
+<p class="fine">枠は上から7行目、左から8列目。他の画素を固定してここにインクを足すと、「0」のスコアは下がり、「8」のスコアは上がる。</p></div></div>
+<p class="bottom-note">色は発表用に実験者が付けた。この位置を LLM が判断に使ったかは、回答記録からは分からない。</p>""",
+    )
+
+    astra = {
+        (r["tier"], int(r["target"])): r for r in trials if r["model"] == MODELS[0]
+    }
+    grid = []
+    for tier in TIERS:
+        cells = [f"{params[tier]:,}"]
+        for digit in range(10):
+            trial = astra[tier, digit]
+            css = "hit" if trial["correct"] == "True" else "miss"
+            cells.append(
+                f'<span class="prediction {css}">{trial["guess"] or "—"}</span>'
+            )
+        grid.append(cells)
+    add(
+        "考察　対象数字と回答",
+        f"""<h2>Astra は「8」を5構成のうち1構成で当てた</h2>
+<p class="intro">列が学習対象、マスの数字が実際の回答。それぞれ独立した設問。</p>
+<div class="matrix-key"><span><i class="hit"></i>正答</span><span><i class="miss"></i>誤答</span></div>
+<div class="digit-matrix">{matrix_table(["パラメータ数 ／ 対象", *range(10)], grid)}</div>
+<p class="finding">「8」への回答は小さい構成から 2、8、2、4、7。「0」と「6」は、全5構成で正答した。</p>
+<p class="fine">最大の33,537パラメータでも5問正解した。各数字・各構成につき1個のネットを試したため、読めるサイズの上限は定まらない。</p>""",
+    )
+
+    frequencies = []
+    for model, name in zip(MODELS, SHORT, strict=True):
+        valid = [
+            r["guess"]
+            for r in trials
+            if r["model"] == model
+            and r["valid_answer"] == "True"
+            and r["delivered"] == "True"
+        ]
+        counts = Counter(valid)
+        frequencies.append([name, *(counts[str(d)] for d in range(10)), len(valid)])
+    add(
+        "考察　回答の偏りと記録の限界",
+        f"""<h2>Terra は50問中14問で「1」と回答</h2>
+<p class="intro">各数字が正解になる設問は5問ずつ。表は、各モデルが有効な回答でその数字を選んだ回数。</p>
+<div class="freq">{matrix_table(["回答した数字", *range(10), "合計"], frequencies)}</div>
+<div class="observations"><div><h3>Terra の「1」</h3><p>対象が「1」の5問は全問正答。ほかの数字を学習した分類器にも、9回「1」と答えた。</p></div>
+<div><h3>Luna の回答形式</h3><p>適合44問中、39問で有効な数字を返した。残る5問は <code>?</code> が4件、JSONを2つに分けた回答が1件。</p></div></div>
+<p class="fine">別の6件では Luna が運営役に追加送信し、返信はなかった。この6件は集計から除外した。　<a href="{REPO}/blob/main/results/deviations.jsonl">送信の記録</a></p>
+<p class="bottom-note">回答の偏りは観測できる。その数字を選ぶまでに、ほかの候補を検討したかは記録されていない。　<a href="{REPO}/blob/main/results/trials.csv">採点表</a></p>""",
     )
 
     template = (HERE / "template.html").read_text()

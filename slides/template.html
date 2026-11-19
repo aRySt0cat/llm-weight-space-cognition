@@ -218,7 +218,7 @@
         display: grid;
         grid-template-columns: 140px 52px 140px 55px 1fr;
         align-items: center;
-        margin: 30px 6px 20px;
+        margin: 24px 6px 12px;
       }
       .image-tile {
         background: var(--dark);
@@ -275,92 +275,6 @@
         color: #bdd1ca;
         font-size: 15px;
       }
-      .probe-slide .flow {
-        margin: 18px 6px 8px;
-      }
-      .probe-slide .probe-note {
-        font-size: 19px;
-      }
-      .worked {
-        display: grid;
-        grid-template-columns: 1.08fr 1fr;
-        gap: 44px;
-        margin-top: 28px;
-        align-items: start;
-      }
-      .worked .sample {
-        padding: 24px 26px;
-      }
-      .worked p {
-        margin-top: 12px;
-      }
-      .worked .sample pre,
-      .worked .explain pre {
-        font-size: 20px;
-        line-height: 1.55;
-        margin: 14px 0 6px;
-        white-space: pre-wrap;
-      }
-      .worked .sample .ask {
-        border-top: 1px solid #547274;
-        padding-top: 14px;
-      }
-      .answer-box {
-        margin-top: 17px;
-        padding: 12px 19px;
-        background: var(--tint);
-      }
-      .answer-box b {
-        font-size: 18px;
-        color: var(--teal);
-      }
-      .worked .answer-box pre {
-        margin-top: 2px;
-      }
-      .segment-answer {
-        display: flex;
-        align-items: center;
-        gap: 25px;
-        margin-bottom: 17px;
-      }
-      .segment-answer .seg-tile {
-        width: 123px;
-        height: 149px;
-      }
-      .segment-answer svg {
-        height: 120px;
-      }
-      .score-strip {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-top: 18px;
-        border-top: 1px solid var(--rule);
-        padding-top: 14px;
-      }
-      .score-strip h3 {
-        font-size: 21px;
-      }
-      .score-strip small {
-        color: var(--muted);
-        font-size: 16px;
-        font-weight: 500;
-      }
-      .score-example {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        font-size: 20px;
-      }
-      .score-example b {
-        font: 700 27px var(--num);
-        color: var(--teal);
-      }
-      .score-image {
-        width: 55px;
-        padding: 3px;
-        background: var(--dark);
-      }
       .question {
         border-left: 4px solid var(--teal);
         padding: 5px 0 3px 23px;
@@ -416,28 +330,9 @@
       table b {
         font-weight: 740;
       }
-      .task-list {
-        margin: 8px 0 17px;
-      }
-      .task-item {
-        display: grid;
-        grid-template-columns: 1fr 65px;
-        gap: 15px;
-        align-items: center;
-        border-bottom: 1px solid var(--rule);
-        padding: 7px 0;
-      }
-      .task-item b {
-        text-align: right;
-        color: var(--teal);
-        font-family: var(--num);
-        font-size: 27px;
-      }
-      .methods {
-        font-size: 18px;
-        line-height: 1.65;
-        color: var(--muted);
-      }
+      .conditions dl { margin: 14px 0 0; }
+      .conditions dt { color: var(--teal); font-size: 17px; font-weight: 700; }
+      .conditions dd { font-size: 19px; line-height: 1.45; margin: 3px 0 13px; }
       .bottom-note {
         position: absolute;
         left: 66px;
@@ -506,104 +401,43 @@
         color: var(--muted);
         margin-top: 10px;
       }
-      .control {
+      .maps-and-answers {
         display: grid;
-        grid-template-columns: 1fr 1.13fr;
+        grid-template-columns: 1fr 1fr;
         gap: 60px;
         align-items: center;
-        margin-top: 38px;
+        margin-top: 30px;
       }
-      .visual-pair {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 18px;
-        align-items: start;
+      .map-pair { display: flex; justify-content: space-around; }
+      .map-pair figure { text-align: center; }
+      .map-label { font-size: 22px; font-weight: 650; margin-bottom: 8px; }
+      .weight-map { display: block; width: 177px; height: 177px; border: 1px solid var(--rule); }
+      .map-pair figcaption { margin-top: 6px; }
+      .map-pair figcaption b { font: 700 22px var(--num); color: var(--ink); }
+      .map-key { font-size: 16px; color: var(--muted); margin: 16px 0 0; text-align: center; }
+      .map-key i, .matrix-key i {
+        display: inline-block; width: 14px; height: 14px; margin: 0 5px 0 8px;
       }
-      .visual-pair figure {
-        text-align: center;
-      }
-      .visual-pair figcaption {
-        margin-top: 10px;
-      }
-      .seg-tile,
-      .map-tile {
-        height: 176px;
-        display: grid;
-        place-items: center;
-      }
-      .seg-tile {
-        background: var(--dark);
-      }
-      .seg-tile svg {
-        height: 145px;
-      }
-      .map-tile {
-        background: #eeeae2;
-      }
-      .map-tile img {
-        width: 154px;
-        height: 154px;
-        image-rendering: pixelated;
-      }
-      .weight-vector {
-        font: 600 21px/1.6 var(--num);
-        letter-spacing: 0.02em;
-        color: var(--teal);
-        margin: 20px 0 0;
-        text-align: left;
-      }
-      .small-title {
-        font-size: 20px;
-        font-weight: 670;
-        color: var(--muted);
-        margin-bottom: 8px;
-      }
-      .control table td,
-      .edit-grid table td,
-      .case table td {
-        padding-top: 14px;
-        padding-bottom: 14px;
-      }
-      .model-name {
-        font: 600 22px var(--num);
-        letter-spacing: -0.015em;
-      }
-      .edit-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 55px;
-        margin-top: 34px;
-        align-items: center;
-      }
-      .patch {
-        background: var(--tint);
-        padding: 25px 29px 24px;
-      }
-      .readout {
-        display: grid;
-        grid-template-columns: 1.04fr 1fr;
-        gap: 43px;
-        align-items: center;
-        margin-top: 24px;
-      }
-      .readout figure {
-        background: var(--tint);
-        padding: 13px 17px;
-      }
-      .readout .net {
-        height: 170px;
-      }
-      .readout .formula {
-        border-top: 1px solid #c0d2c9;
-        font-size: 26px;
-        text-align: center;
-        padding-top: 11px;
-        color: var(--teal);
-        font-weight: 650;
-      }
-      .readout .fine {
-        font-size: 17px;
-      }
+      .neg { background: #255399; }
+      .pos { background: #a63c20; }
+      .maps-and-answers td { padding-top: 13px; padding-bottom: 13px; }
+      .matrix-key { display: flex; justify-content: end; gap: 16px; margin: 17px 0 6px; font-size: 17px; }
+      .hit { background: #dbece5; color: #075c4d; }
+      .miss { background: #f5ded0; color: #833917; }
+      .digit-matrix table, .freq table { table-layout: fixed; }
+      .digit-matrix th:first-child { width: 215px; }
+      .freq th:first-child { width: 175px; }
+      .digit-matrix th:not(:first-child), .freq th:not(:first-child) { text-align: center; font-size: 21px; }
+      .digit-matrix td:not(:first-child), .freq td:not(:first-child) { text-align: center; }
+      .digit-matrix td { padding: 5px 4px; font-family: var(--num); }
+      .digit-matrix td:first-child { padding-left: 0; }
+      .prediction { display: block; font-size: 24px; line-height: 1.42; }
+      .digit-matrix { margin-bottom: 19px; }
+      .freq { margin: 30px 0 25px; }
+      .freq td:last-child, .freq th:last-child { border-left: 1px solid var(--rule); }
+      .observations { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; }
+      .observations h3 { font-size: 23px; }
+      .observations p { margin-top: 7px; font-size: 20px; line-height: 1.5; }
       .case {
         display: grid;
         grid-template-columns: 235px 1fr;
@@ -625,10 +459,7 @@
       .case table td:first-child {
         font-size: 23px;
       }
-      .case-result {
-        color: var(--teal);
-        font-weight: 700;
-      }
+      .case td a { font-size: 25px; }
       .finding {
         padding: 16px 23px;
         background: var(--tint);
