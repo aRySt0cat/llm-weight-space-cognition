@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 STAGE = ROOT / ".packets"
-MODELS = ["gpt-6.1-terra", "gpt-6-luna"]
+MODELS = ["gpt-6.1-terra", "gpt-6-luna", "gpt-6.2-astra"]
 TIERS = ["linear", "h4", "h32", "h32x32", "h128x64"]
 
 
