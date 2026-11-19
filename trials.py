@@ -82,9 +82,9 @@ def has_receipts(raw, expected):
         return False
 
 
-def record(model, uid, agent, raw, status, schedule=None):
+def record(model, uid, agent, raw, status, schedule=None, results_dir=None):
     row = next(x for x in lines(schedule or ROOT / "schedule.jsonl") if x["id"] == uid)
-    dest = ROOT / "results" / model / (uid + ".json")
+    dest = (results_dir or ROOT / "results") / model / (uid + ".json")
     dest.parent.mkdir(parents=True, exist_ok=True)
     delivered = status == "completed" and has_receipts(raw, row["receipts"])
     payload = dict(model=model, effort="medium", id=uid, agent=agent, status=status,

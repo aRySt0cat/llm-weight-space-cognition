@@ -47,7 +47,15 @@ def valid(value):
     return type(value) in (int, float) and math.isfinite(float(value))
 
 
-def audit(archive):
+def retry_eligible(model, row):
+    path = ROOT / "results" / model / (row["id"] + ".json")
+    if not path.exists():
+        return False
+    first = read_answer(path.read_text())
+    return first["status"] == "transport_failure" and not has_receipts(first["raw"], row["receipts"])
+
+
+def audit(archive, retries=False):
     with np.load(dataset_path(archive), allow_pickle=False) as d:
         images = pool_images(d["x_test"])
     output = []
@@ -61,11 +69,14 @@ def audit(archive):
         expected = -np.append(weights.ravel(), bias)
         reference = -logits(layers, images)
         for model in MODELS:
+            if retries and not retry_eligible(model, row):
+                continue
             result = dict(id=row["id"], model=model, tier=row["tier"], recorded=False, delivered=False,
                           valid_answer=False, exact=False, matching_scalars=None, total_scalars=len(expected),
                           functional_pass=False, max_abs_error=None, test_sign_agreement=None)
             output.append(result)
-            path = ROOT / "results" / model / (row["id"] + ".json")
+            base = ROOT / "results"
+            path = (base / "retries" if retries else base) / model / (row["id"] + ".json")
             if not path.exists():
                 continue
             response = read_answer(path.read_text())
@@ -96,7 +107,10 @@ def audit(archive):
             result.update(valid_answer=True, exact=bool(np.array_equal(submitted, expected)),
                           matching_scalars=int(np.sum(submitted == expected)), max_abs_error=err,
                           functional_pass=err <= 1e-8, test_sign_agreement=float(np.mean((actual > 0) == (reference > 0))))
-    with (ROOT / "results/inversion.csv").open("w", newline="") as f:
+    if not output:
+        return []
+    name = "inversion_retries.csv" if retries else "inversion.csv"
+    with (ROOT / "results" / name).open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=output[0].keys())
         w.writeheader()
         w.writerows(output)
@@ -109,20 +123,27 @@ if __name__ == "__main__":
     subs.add_parser("stage")
     for name in ["task", "prompt"]:
         subs.add_parser(name).add_argument("id")
-    r = subs.add_parser("record")
-    r.add_argument("model", choices=MODELS)
-    r.add_argument("id")
-    r.add_argument("agent")
-    r.add_argument("--status", default="completed", choices=["completed", "transport_failure", "compacted", "tool_violation"])
-    subs.add_parser("score").add_argument("--data", type=Path, required=True)
+    for name in ["record", "record-retry"]:
+        r = subs.add_parser(name)
+        r.add_argument("model", choices=MODELS)
+        r.add_argument("id")
+        r.add_argument("agent")
+        r.add_argument("--status", default="completed", choices=["completed", "transport_failure", "compacted", "tool_violation"])
+    for name in ["score", "score-retries"]:
+        subs.add_parser(name).add_argument("--data", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "stage":
         stage()
     elif args.command == "record":
         record(args.model, args.id, args.agent, sys.stdin.read(), args.status, SCHEDULE)
-    elif args.command == "score":
+    elif args.command == "record-retry":
+        row = next(r for r in lines(SCHEDULE) if r["id"] == args.id)
+        if not retry_eligible(args.model, row):
+            parser.error("A retry requires an original transport failure with incomplete receipts")
+        record(args.model, args.id, args.agent, sys.stdin.read(), args.status, SCHEDULE, ROOT / "results/retries")
+    elif args.command in ("score", "score-retries"):
         with threadpool_limits(limits=1):
-            out = audit(args.data)
+            out = audit(args.data, retries=args.command == "score-retries")
         print("Record count", sum(r["recorded"] for r in out), "/", len(out))
     else:
         row = next(r for r in lines(SCHEDULE) if r["id"] == args.id)
