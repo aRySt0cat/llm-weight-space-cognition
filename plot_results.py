@@ -12,7 +12,7 @@ from trials import MODELS, ROOT, TIERS
 def draw():
     with (ROOT / "results/trials.csv").open() as f:
         data = {(r["model"], r["tier"], r["target"]): r for r in csv.DictReader(f) if r["tier"] != "edit"}
-    fig, axes = plt.subplots(2, 1, figsize=(9.2, 7.8), layout="constrained")
+    fig, axes = plt.subplots(len(MODELS), 1, figsize=(9.2, 3.6 * len(MODELS) + .6), layout="constrained")
     fig.get_layout_engine().set(h_pad=0.18, w_pad=0.18)
     colors = {"correct": "#096b62", "wrong": "#e6ecf1", "invalid": "#f5dcbd", "missing": "#f6f7f9"}
     for ax, model in zip(axes, MODELS, strict=True):

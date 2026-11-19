@@ -1,3 +1,4 @@
-model,eligible,valid_digits,correct,expected_under_permutation,exploratory_p,holm_two_models
-gpt-6.1-terra,50,50,10,5.0,0.045341435185185186,0.09068287037037037
-gpt-6-luna,44,39,5,3.9,0.3507440476190476,0.3507440476190476
+model,eligible,valid_digits,correct,expected_under_permutation,exploratory_p,holm_two_models,holm_all_models
+gpt-6.1-terra,50,50,10,5.0,0.045341435185185186,0.09068287037037037,0.09068287037037037
+gpt-6-luna,44,39,5,3.9,0.3507440476190476,0.3507440476190476,0.3507440476190476
+gpt-6.2-astra,50,50,38,5.0,2.755731922398589e-07,,8.267195767195766e-07

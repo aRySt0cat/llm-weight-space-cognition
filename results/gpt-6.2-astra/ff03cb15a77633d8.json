@@ -1,0 +1,1 @@
+{"model":"gpt-6.2-astra","effort":"medium","id":"ff03cb15a77633d8","agent":"/root/astra_controls/e03","status":"completed","delivery_verified":true,"prompt_sha256":"cd38ac39be41eda73946245a4e50408c0b10559ac39bbd6d983e3fcb73e09935","raw":"{\"answer\":{\"weights\":[-1.0343,2.3511,1.383,1.5262],\"bias\":0.090611},\"receipts\":[\"d5a4c040\"]}\n"}

@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LLM は重みから数字を読めるか</title>
+    <style>
+      :root {
+        --paper: #fafaf7;
+        --ink: #172b32;
+        --muted: #52676c;
+        --rule: #cbd4d0;
+        --teal: #006858;
+        --tint: #e3eee7;
+        --dark: #132f32;
+        --astra: #006858;
+        --terra: #4e69ac;
+        --luna: #ac572e;
+        --sans: "Inter", "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+        --num: "Inter", Arial, var(--sans);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        color: var(--ink);
+        font: 22px/1.5 var(--sans);
+        background: #233436;
+        font-feature-settings: "palt";
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      body.live {
+        height: 100dvh;
+        overflow: hidden;
+      }
+      #deck {
+        position: relative;
+        width: 1280px;
+        margin: 0 auto;
+        background: var(--paper);
+      }
+      .live #deck {
+        position: absolute;
+        inset: 50% auto auto 50%;
+        margin: 0;
+        height: 720px;
+        transform: translate(-50%, -50%) scale(var(--scale, 1));
+      }
+      .slide {
+        position: relative;
+        width: 1280px;
+        height: 720px;
+        background: var(--paper);
+        padding: 48px 66px 72px;
+        overflow: hidden;
+      }
+      .live .slide {
+        display: none;
+      }
+      .live .slide.current {
+        display: block;
+      }
+      h1,
+      h2,
+      h3,
+      p,
+      figure {
+        margin: 0;
+      }
+      h1,
+      h2,
+      h3 {
+        font-weight: 730;
+        letter-spacing: -0.045em;
+      }
+      h1 {
+        font-size: 72px;
+        line-height: 1.24;
+      }
+      h1 em {
+        font-style: normal;
+        color: var(--teal);
+      }
+      h2 {
+        font-size: 46px;
+        line-height: 1.28;
+      }
+      h3 {
+        font-size: 26px;
+        line-height: 1.35;
+      }
+      .intro {
+        font-size: 21px;
+        color: var(--muted);
+        margin-top: 8px;
+        line-height: 1.5;
+      }
+      .num,
+      .ratio,
+      .formula,
+      pre,
+      td.n {
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum";
+        font-family: var(--num);
+      }
+      pre {
+        font-family: "DejaVu Sans Mono", Consolas, monospace;
+      }
+      .cover-layout {
+        display: grid;
+        grid-template-columns: 1fr 526px;
+        gap: 43px;
+        align-items: center;
+        height: 540px;
+      }
+      .cover h1 {
+        white-space: nowrap;
+      }
+      .cover .intro {
+        font-size: 23px;
+        margin: 25px 0 47px;
+        max-width: 570px;
+      }
+      .cover-models {
+        font: 600 21px var(--num);
+        color: var(--muted);
+        letter-spacing: -0.02em;
+      }
+      .digit-plate {
+        background: var(--dark);
+        padding: 36px 26px 24px;
+        color: white;
+      }
+      .digit-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 22px 6px;
+        padding: 10px 0 25px;
+      }
+      .ink {
+        display: block;
+        image-rendering: pixelated;
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1;
+        object-fit: contain;
+      }
+      .digit-plate figcaption {
+        border-top: 1px solid #547274;
+        padding-top: 13px;
+        font-size: 16px;
+        color: #c3d6d2;
+      }
+      .foot {
+        position: absolute;
+        bottom: 0;
+        left: 66px;
+        right: 66px;
+        height: 55px;
+        border-top: 1px solid var(--rule);
+        display: flex;
+        align-items: center;
+        color: var(--muted);
+        font-size: 16px;
+        gap: 16px;
+      }
+      .foot span:first-child {
+        margin-right: auto;
+      }
+      .foot .pagenum {
+        margin-right: 190px;
+        font: 600 16px var(--num);
+        font-variant-numeric: tabular-nums;
+      }
+      #nav {
+        display: none;
+      }
+      .live #nav {
+        display: flex;
+        position: absolute;
+        bottom: 9px;
+        right: 62px;
+        gap: 5px;
+        height: 36px;
+        align-items: center;
+      }
+      button {
+        color: var(--ink);
+        background: transparent;
+        border: 1px solid #aebcba;
+        width: 42px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        border-radius: 3px;
+      }
+      button svg {
+        width: 19px;
+        height: 19px;
+      }
+      button:disabled {
+        opacity: 0.28;
+        cursor: default;
+      }
+      button:hover:not(:disabled) {
+        background: var(--tint);
+      }
+      button:focus-visible {
+        outline: 3px solid #1973cf;
+        outline-offset: 2px;
+      }
+      .flow {
+        display: grid;
+        grid-template-columns: 140px 52px 140px 55px 1fr;
+        align-items: center;
+        margin: 30px 6px 20px;
+      }
+      .image-tile {
+        background: var(--dark);
+        width: 120px;
+        height: 120px;
+        padding: 7px;
+        margin: 0 auto 8px;
+      }
+      .center {
+        text-align: center;
+      }
+      .caption,
+      figcaption {
+        font-size: 17px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+      .flow-arrow {
+        text-align: center;
+        color: #78948e;
+        font: 34px var(--num);
+        margin-top: -33px;
+      }
+      .net {
+        width: 100%;
+        height: 180px;
+        display: block;
+      }
+      .data-strip {
+        display: grid;
+        grid-template-columns: 1.55fr 1fr;
+        gap: 36px;
+        align-items: stretch;
+        padding-top: 15px;
+      }
+      .sample {
+        background: var(--dark);
+        color: #e2f2e7;
+        padding: 22px 25px 18px;
+      }
+      .sample h3 {
+        color: #b3d4c7;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0;
+      }
+      .sample pre {
+        font-size: 17px;
+        line-height: 1.55;
+        white-space: pre;
+        margin: 9px 0;
+      }
+      .sample .caption {
+        color: #bdd1ca;
+        font-size: 15px;
+      }
+      .question {
+        border-left: 4px solid var(--teal);
+        padding: 5px 0 3px 23px;
+        align-self: center;
+      }
+      .question h3 {
+        font-size: 30px;
+      }
+      .question p {
+        margin-top: 10px;
+        font-size: 21px;
+        color: var(--muted);
+      }
+      .setup {
+        display: grid;
+        grid-template-columns: 1.28fr 1fr;
+        gap: 66px;
+        margin-top: 34px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+      th,
+      td {
+        padding: 10px 12px;
+        text-align: right;
+        vertical-align: middle;
+        border-bottom: 1px solid var(--rule);
+        font-weight: 500;
+        white-space: nowrap;
+        line-height: 1.35;
+      }
+      th:first-child,
+      td:first-child {
+        text-align: left;
+        padding-left: 0;
+      }
+      th:last-child,
+      td:last-child {
+        padding-right: 0;
+      }
+      th {
+        font-size: 17px;
+        font-weight: 650;
+        color: var(--muted);
+        border-bottom: 2px solid #9aacaa;
+      }
+      td {
+        font-size: 24px;
+      }
+      table b {
+        font-weight: 740;
+      }
+      .task-list {
+        margin: 8px 0 17px;
+      }
+      .task-item {
+        display: grid;
+        grid-template-columns: 1fr 65px;
+        gap: 15px;
+        align-items: center;
+        border-bottom: 1px solid var(--rule);
+        padding: 7px 0;
+      }
+      .task-item b {
+        text-align: right;
+        color: var(--teal);
+        font-family: var(--num);
+        font-size: 27px;
+      }
+      .methods {
+        font-size: 18px;
+        line-height: 1.65;
+        color: var(--muted);
+      }
+      .bottom-note {
+        position: absolute;
+        left: 66px;
+        right: 66px;
+        bottom: 79px;
+        border-left: 4px solid var(--teal);
+        padding: 5px 0 5px 18px;
+        font-size: 21px;
+        line-height: 1.5;
+      }
+      .legend {
+        display: flex;
+        align-items: center;
+        gap: 30px;
+        color: var(--muted);
+        font-size: 18px;
+      }
+      .key {
+        width: 13px;
+        height: 13px;
+        display: inline-block;
+        margin-right: 8px;
+        vertical-align: 0;
+      }
+      .chart-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 23px;
+      }
+      .chart-top p {
+        font-size: 17px;
+        color: var(--muted);
+      }
+      .chart {
+        width: 100%;
+        height: 310px;
+        display: block;
+      }
+      .chart text,
+      .net text {
+        font-family: var(--sans);
+      }
+      .totals {
+        display: flex;
+        align-items: baseline;
+        gap: 31px;
+        border-top: 1px solid var(--rule);
+        padding-top: 10px;
+      }
+      .totals strong {
+        font-size: 21px;
+      }
+      .total {
+        font-size: 18px;
+        color: var(--muted);
+      }
+      .total b {
+        font: 700 30px var(--num);
+        color: var(--ink);
+        margin-left: 8px;
+      }
+      .fine {
+        font-size: 17px;
+        line-height: 1.5;
+        color: var(--muted);
+        margin-top: 10px;
+      }
+      .control {
+        display: grid;
+        grid-template-columns: 1fr 1.13fr;
+        gap: 60px;
+        align-items: center;
+        margin-top: 38px;
+      }
+      .visual-pair {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+        align-items: start;
+      }
+      .visual-pair figure {
+        text-align: center;
+      }
+      .visual-pair figcaption {
+        margin-top: 10px;
+      }
+      .seg-tile,
+      .map-tile {
+        height: 176px;
+        display: grid;
+        place-items: center;
+      }
+      .seg-tile {
+        background: var(--dark);
+      }
+      .seg-tile svg {
+        height: 145px;
+      }
+      .map-tile {
+        background: #eeeae2;
+      }
+      .map-tile img {
+        width: 154px;
+        height: 154px;
+        image-rendering: pixelated;
+      }
+      .weight-vector {
+        font: 600 21px/1.6 var(--num);
+        letter-spacing: 0.02em;
+        color: var(--teal);
+        margin: 20px 0 0;
+        text-align: left;
+      }
+      .small-title {
+        font-size: 20px;
+        font-weight: 670;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+      .control table td,
+      .edit-grid table td,
+      .case table td {
+        padding-top: 14px;
+        padding-bottom: 14px;
+      }
+      .model-name {
+        font: 600 22px var(--num);
+        letter-spacing: -0.015em;
+      }
+      .edit-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 55px;
+        margin-top: 34px;
+        align-items: center;
+      }
+      .patch {
+        background: var(--tint);
+        padding: 25px 29px 24px;
+      }
+      .patch .formula {
+        font-size: 32px;
+        line-height: 1.5;
+      }
+      .patch-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-top: 10px;
+        border-top: 1px solid #bdd0c8;
+        padding-top: 8px;
+      }
+      .patch-row span {
+        font-size: 19px;
+      }
+      .patch-row b {
+        font: 700 30px var(--num);
+        color: var(--teal);
+      }
+      .readout {
+        display: grid;
+        grid-template-columns: 1.04fr 1fr;
+        gap: 43px;
+        align-items: center;
+        margin-top: 24px;
+      }
+      .readout figure {
+        background: var(--tint);
+        padding: 13px 17px;
+      }
+      .readout .net {
+        height: 170px;
+      }
+      .readout .formula {
+        border-top: 1px solid #c0d2c9;
+        font-size: 26px;
+        text-align: center;
+        padding-top: 11px;
+        color: var(--teal);
+        font-weight: 650;
+      }
+      .readout .fine {
+        font-size: 17px;
+      }
+      .case {
+        display: grid;
+        grid-template-columns: 235px 1fr;
+        gap: 66px;
+        align-items: center;
+        margin: 27px 0 20px;
+      }
+      .case .image-tile {
+        height: 175px;
+        width: 175px;
+        padding: 8px;
+      }
+      .case figcaption {
+        text-align: center;
+      }
+      .case table td {
+        font-size: 28px;
+      }
+      .case table td:first-child {
+        font-size: 23px;
+      }
+      .case-result {
+        color: var(--teal);
+        font-weight: 700;
+      }
+      .finding {
+        padding: 16px 23px;
+        background: var(--tint);
+        font-size: 24px;
+        line-height: 1.45;
+        font-weight: 600;
+      }
+      .sources {
+        font-size: 16px;
+        color: var(--muted);
+        margin-top: 11px;
+      }
+      a {
+        color: var(--teal);
+        text-underline-offset: 3px;
+      }
+      @media print {
+        @page {
+          size: 320mm 180mm;
+          margin: 0;
+        }
+        html,
+        body,
+        body.live {
+          width: 320mm;
+          height: auto;
+          overflow: visible;
+          background: var(--paper);
+        }
+        #deck,
+        .live #deck {
+          position: static;
+          width: 320mm;
+          height: auto;
+          transform: none;
+          margin: 0;
+        }
+        .slide,
+        .live .slide,
+        .live .slide.current {
+          display: block;
+          width: 1280px;
+          height: 720px;
+          zoom: 0.94488189;
+          break-after: page;
+          break-inside: avoid;
+        }
+        .slide:last-of-type {
+          break-after: auto;
+        }
+        .foot .pagenum {
+          margin-right: 0;
+        }
+        .live #nav,
+        #nav {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main id="deck">
+      <!--SLIDES-->
+      <nav id="nav" aria-label="スライド操作">
+        <button id="prev" type="button" aria-label="前のスライド" title="前へ（←）">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m14 5-7 7 7 7" />
+          </svg>
+        </button>
+        <button id="next" type="button" aria-label="次のスライド" title="次へ（→）">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m10 5 7 7-7 7" />
+          </svg>
+        </button>
+        <button id="full" type="button" aria-label="全画面表示" title="全画面表示（F）">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9V3h6m6 0h6v6m0 6v6h-6m-6 0H3v-6" />
+          </svg>
+        </button>
+      </nav>
+    </main>
+    <script>
+      (() => {
+        const slides = [...document.querySelectorAll(".slide")];
+        const prev = document.querySelector("#prev"),
+          next = document.querySelector("#next"),
+          full = document.querySelector("#full");
+        let index = 0;
+        function show(n, updateHash) {
+          index = Math.min(slides.length - 1, Math.max(0, n));
+          slides.forEach((s, i) => {
+            s.classList.toggle("current", i === index);
+            s.setAttribute("aria-hidden", String(i !== index));
+          });
+          prev.disabled = index === 0;
+          next.disabled = index === slides.length - 1;
+          if (updateHash && location.hash !== "#" + (index + 1)) location.hash = String(index + 1);
+          document.title =
+            slides[index].querySelector("h1,h2").innerText.replace(/\n/g, " ") +
+            " ｜ " +
+            (index + 1) +
+            "/" +
+            slides.length;
+        }
+        const fromHash = () =>
+          show(/^#\d+$/.test(location.hash) ? Number(location.hash.slice(1)) - 1 : 0, false);
+        const resize = () =>
+          document.documentElement.style.setProperty(
+            "--scale",
+            Math.min(innerWidth / 1280, innerHeight / 720),
+          );
+        async function toggleFull() {
+          try {
+            if (document.fullscreenElement) await document.exitFullscreen();
+            else await document.documentElement.requestFullscreen();
+          } catch {
+            full.hidden = true;
+          }
+        }
+        document.body.classList.add("live");
+        resize();
+        fromHash();
+        addEventListener("resize", resize);
+        addEventListener("hashchange", fromHash);
+        prev.onclick = () => show(index - 1, true);
+        next.onclick = () => show(index + 1, true);
+        full.onclick = toggleFull;
+        if (!document.fullscreenEnabled) full.style.display = "none";
+        addEventListener("keydown", (e) => {
+          if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+          if ((e.key === " " || e.key === "Enter") && e.target.closest("button,a")) return;
+          if (["ArrowRight", "PageDown", " "].includes(e.key)) show(index + 1, true);
+          else if (["ArrowLeft", "PageUp"].includes(e.key)) show(index - 1, true);
+          else if (e.key === "Home") show(0, true);
+          else if (e.key === "End") show(slides.length - 1, true);
+          else if (e.key.toLowerCase() === "f") toggleFull();
+          else return;
+          e.preventDefault();
+        });
+        let start;
+        addEventListener(
+          "touchstart",
+          (e) => {
+            start = e.touches.length === 1 ? [e.touches[0].clientX, e.touches[0].clientY] : null;
+          },
+          { passive: true },
+        );
+        addEventListener(
+          "touchend",
+          (e) => {
+            if (!start) return;
+            const dx = e.changedTouches[0].clientX - start[0],
+              dy = e.changedTouches[0].clientY - start[1];
+            if (Math.abs(dx) > 55 && Math.abs(dx) > 2 * Math.abs(dy)) show(index - Math.sign(dx), true);
+            start = null;
+          },
+          { passive: true },
+        );
+      })();
+    </script>
+  </body>
+</html>

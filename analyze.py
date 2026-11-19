@@ -2,6 +2,7 @@
 import csv
 from collections import Counter
 from functools import cache
+from itertools import combinations
 import hashlib
 import json
 from math import factorial
@@ -140,9 +141,13 @@ def analyze():
         pooled.append(dict(model=model, eligible=len(rows), valid_digits=valid,
                            correct=sum(r["correct"] for r in rows), expected_under_permutation=valid / 10,
                            exploratory_p=global_permutation_p(rows)))
-    adjusted = holm({r["model"]: r["exploratory_p"] for r in pooled})
+    original_pair = MODELS[:2]
+    p_values = {r["model"]: r["exploratory_p"] for r in pooled}
+    original_adjusted = holm({model: p_values[model] for model in original_pair})
+    adjusted = holm(p_values)
     for row in pooled:
-        row["holm_two_models"] = adjusted[row["model"]]
+        row["holm_two_models"] = original_adjusted.get(row["model"])
+        row["holm_all_models"] = adjusted[row["model"]]
     write_csv("pooled_exploratory.csv", pooled)
     # Secondary sensitivity analysis. Include observed outbound-only tool deviations
     # with complete receipts; never promote these cases to the primary result.
@@ -164,12 +169,17 @@ def analyze():
     for tier in [*TIERS, "edit"]:
         groups = {m: {r["id"]: r for r in evaluated if r["model"] == m and r["tier"] == tier and r["delivered"]}
                   for m in MODELS}
-        left, right = groups.values()
-        common = left.keys() & right.keys()
-        counts = Counter((left[k]["correct"], right[k]["correct"]) for k in common)
-        paired.append(dict(tier=tier, common=len(common), both_correct=counts[True, True],
-                           terra_only=counts[True, False], luna_only=counts[False, True], both_failed=counts[False, False]))
-    write_csv("paired.csv", paired)
+        for first, second in combinations(MODELS, 2):
+            left, right = groups[first], groups[second]
+            common = left.keys() & right.keys()
+            counts = Counter((left[k]["correct"], right[k]["correct"]) for k in common)
+            paired.append(dict(tier=tier, first=first, second=second, common=len(common),
+                               both_correct=counts[True, True], first_only=counts[True, False],
+                               second_only=counts[False, True], both_failed=counts[False, False]))
+    write_csv("paired_models.csv", paired)
+    write_csv("paired.csv", [dict(tier=r["tier"], common=r["common"], both_correct=r["both_correct"],
+                                  terra_only=r["first_only"], luna_only=r["second_only"], both_failed=r["both_failed"])
+                             for r in paired if [r["first"], r["second"]] == original_pair])
     editing = []
     for model in MODELS:
         rows = [r for r in evaluated if r["model"] == model and r["tier"] == "edit" and r["delivered"]]

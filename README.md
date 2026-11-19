@@ -1,10 +1,10 @@
 # LLM は数値列だけで学習済みネットワークを読めるか
 
-同一の学習済みネットワークを **gpt-6.1-terra** と **gpt-6-luna** に提示し、重みから MNIST 分類器の対象数字を推定する実験と、指定された動作に合わせて重みを編集する実験を行う。各モデルに MNIST の数字同定50問と4ビットの数値編集4問を出題し、追加実験として MNIST の出力層編集8問と7セグメントの数字同定10問を用意した。推論の reasoning effort は両モデルとも medium。
+MNIST 分類器の対象数字を、重みだけから答えられたのは **gpt-6.2-astra が38/50、gpt-6.1-terra が10/50、gpt-6-luna が5/44**。同じ72問を各モデルの独立コンテキストで実施した。数字の同定50問、7セグメント同定10問、4ビット入力の編集4問、MNIST の出力層編集8問。推論設定はすべて medium。
 
-**MNIST の対象数字の同定は 6.1-terra が10/50、6-luna が5/44。7セグメントの同定は両方10/10。** 同じ33,537パラメータの「7」の分類器で、両モデルとも対象数字を取り違えた一方、別の独立試行では両モデルとも最終層の65値を正確に編集できた。
+[勉強会スライド（HTML）](slides/index.html) ・ [3モデルの結果と考察](results/REPORT.md) ・ [全問の採点表](results/trials.csv) ・ [事前手順](PROTOCOL.md) ・ [Astra の追加条件](ASTRA_PROTOCOL.md)
 
-[実測結果と解釈](results/REPORT.md) ・ [全問の採点表](results/trials.csv) ・ [事前に固定した手順](PROTOCOL.md)
+スライドは画像とSVGを埋め込んだ単一のHTMLファイル。ブラウザで開き、左右キーで移動、Fキーで全画面表示。印刷時は1枚につき1ページになる。[HTMLをダウンロード](https://github.com/aRySt0cat/llm-weight-space-cognition/raw/refs/heads/main/slides/index.html)
 
 ## 数字の同定
 
@@ -44,7 +44,7 @@ Python 3.12 を使用。トークン参考値の再計算には tiktoken 0.12.0�
 
 ```sh
 python -m pip install -r requirements.txt
-python -m pip install tiktoken==0.12.0 matplotlib==3.10.8
+python -m pip install tiktoken==0.12.0 matplotlib==3.10.8 Pillow==13.0.0
 
 # 公開済みの重みを復元し、公式テストセット全1万枚で数値を照合
 python prepare.py verify --data /tmp/weight-space/mnist.npz
@@ -63,6 +63,7 @@ python inversion.py score --data /tmp/weight-space/mnist.npz
 python inversion.py score-retries --data /tmp/weight-space/mnist.npz
 python analyze.py
 python plot_results.py
+python slides/build.py --data /tmp/weight-space/mnist.npz
 python controls.py illustrate --data /tmp/weight-space/mnist.npz
 ```
 

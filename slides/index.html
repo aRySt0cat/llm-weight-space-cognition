@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LLM は重みから数字を読めるか</title>
+    <style>
+      :root {
+        --paper: #fafaf7;
+        --ink: #172b32;
+        --muted: #52676c;
+        --rule: #cbd4d0;
+        --teal: #006858;
+        --tint: #e3eee7;
+        --dark: #132f32;
+        --astra: #006858;
+        --terra: #4e69ac;
+        --luna: #ac572e;
+        --sans: "Inter", "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+        --num: "Inter", Arial, var(--sans);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        color: var(--ink);
+        font: 22px/1.5 var(--sans);
+        background: #233436;
+        font-feature-settings: "palt";
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      body.live {
+        height: 100dvh;
+        overflow: hidden;
+      }
+      #deck {
+        position: relative;
+        width: 1280px;
+        margin: 0 auto;
+        background: var(--paper);
+      }
+      .live #deck {
+        position: absolute;
+        inset: 50% auto auto 50%;
+        margin: 0;
+        height: 720px;
+        transform: translate(-50%, -50%) scale(var(--scale, 1));
+      }
+      .slide {
+        position: relative;
+        width: 1280px;
+        height: 720px;
+        background: var(--paper);
+        padding: 48px 66px 72px;
+        overflow: hidden;
+      }
+      .live .slide {
+        display: none;
+      }
+      .live .slide.current {
+        display: block;
+      }
+      h1,
+      h2,
+      h3,
+      p,
+      figure {
+        margin: 0;
+      }
+      h1,
+      h2,
+      h3 {
+        font-weight: 730;
+        letter-spacing: -0.045em;
+      }
+      h1 {
+        font-size: 72px;
+        line-height: 1.24;
+      }
+      h1 em {
+        font-style: normal;
+        color: var(--teal);
+      }
+      h2 {
+        font-size: 46px;
+        line-height: 1.28;
+      }
+      h3 {
+        font-size: 26px;
+        line-height: 1.35;
+      }
+      .intro {
+        font-size: 21px;
+        color: var(--muted);
+        margin-top: 8px;
+        line-height: 1.5;
+      }
+      .num,
+      .ratio,
+      .formula,
+      pre,
+      td.n {
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum";
+        font-family: var(--num);
+      }
+      pre {
+        font-family: "DejaVu Sans Mono", Consolas, monospace;
+      }
+      .cover-layout {
+        display: grid;
+        grid-template-columns: 1fr 526px;
+        gap: 43px;
+        align-items: center;
+        height: 540px;
+      }
+      .cover h1 {
+        white-space: nowrap;
+      }
+      .cover .intro {
+        font-size: 23px;
+        margin: 25px 0 47px;
+        max-width: 570px;
+      }
+      .cover-models {
+        font: 600 21px var(--num);
+        color: var(--muted);
+        letter-spacing: -0.02em;
+      }
+      .digit-plate {
+        background: var(--dark);
+        padding: 36px 26px 24px;
+        color: white;
+      }
+      .digit-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 22px 6px;
+        padding: 10px 0 25px;
+      }
+      .ink {
+        display: block;
+        image-rendering: pixelated;
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1;
+        object-fit: contain;
+      }
+      .digit-plate figcaption {
+        border-top: 1px solid #547274;
+        padding-top: 13px;
+        font-size: 16px;
+        color: #c3d6d2;
+      }
+      .foot {
+        position: absolute;
+        bottom: 0;
+        left: 66px;
+        right: 66px;
+        height: 55px;
+        border-top: 1px solid var(--rule);
+        display: flex;
+        align-items: center;
+        color: var(--muted);
+        font-size: 16px;
+        gap: 16px;
+      }
+      .foot span:first-child {
+        margin-right: auto;
+      }
+      .foot .pagenum {
+        margin-right: 190px;
+        font: 600 16px var(--num);
+        font-variant-numeric: tabular-nums;
+      }
+      #nav {
+        display: none;
+      }
+      .live #nav {
+        display: flex;
+        position: absolute;
+        bottom: 9px;
+        right: 62px;
+        gap: 5px;
+        height: 36px;
+        align-items: center;
+      }
+      button {
+        color: var(--ink);
+        background: transparent;
+        border: 1px solid #aebcba;
+        width: 42px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        border-radius: 3px;
+      }
+      button svg {
+        width: 19px;
+        height: 19px;
+      }
+      button:disabled {
+        opacity: 0.28;
+        cursor: default;
+      }
+      button:hover:not(:disabled) {
+        background: var(--tint);
+      }
+      button:focus-visible {
+        outline: 3px solid #1973cf;
+        outline-offset: 2px;
+      }
+      .flow {
+        display: grid;
+        grid-template-columns: 140px 52px 140px 55px 1fr;
+        align-items: center;
+        margin: 30px 6px 20px;
+      }
+      .image-tile {
+        background: var(--dark);
+        width: 120px;
+        height: 120px;
+        padding: 7px;
+        margin: 0 auto 8px;
+      }
+      .center {
+        text-align: center;
+      }
+      .caption,
+      figcaption {
+        font-size: 17px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+      .flow-arrow {
+        text-align: center;
+        color: #78948e;
+        font: 34px var(--num);
+        margin-top: -33px;
+      }
+      .net {
+        width: 100%;
+        height: 180px;
+        display: block;
+      }
+      .data-strip {
+        display: grid;
+        grid-template-columns: 1.55fr 1fr;
+        gap: 36px;
+        align-items: stretch;
+        padding-top: 15px;
+      }
+      .sample {
+        background: var(--dark);
+        color: #e2f2e7;
+        padding: 22px 25px 18px;
+      }
+      .sample h3 {
+        color: #b3d4c7;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0;
+      }
+      .sample pre {
+        font-size: 17px;
+        line-height: 1.55;
+        white-space: pre;
+        margin: 9px 0;
+      }
+      .sample .caption {
+        color: #bdd1ca;
+        font-size: 15px;
+      }
+      .question {
+        border-left: 4px solid var(--teal);
+        padding: 5px 0 3px 23px;
+        align-self: center;
+      }
+      .question h3 {
+        font-size: 30px;
+      }
+      .question p {
+        margin-top: 10px;
+        font-size: 21px;
+        color: var(--muted);
+      }
+      .setup {
+        display: grid;
+        grid-template-columns: 1.28fr 1fr;
+        gap: 66px;
+        margin-top: 34px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+      th,
+      td {
+        padding: 10px 12px;
+        text-align: right;
+        vertical-align: middle;
+        border-bottom: 1px solid var(--rule);
+        font-weight: 500;
+        white-space: nowrap;
+        line-height: 1.35;
+      }
+      th:first-child,
+      td:first-child {
+        text-align: left;
+        padding-left: 0;
+      }
+      th:last-child,
+      td:last-child {
+        padding-right: 0;
+      }
+      th {
+        font-size: 17px;
+        font-weight: 650;
+        color: var(--muted);
+        border-bottom: 2px solid #9aacaa;
+      }
+      td {
+        font-size: 24px;
+      }
+      table b {
+        font-weight: 740;
+      }
+      .task-list {
+        margin: 8px 0 17px;
+      }
+      .task-item {
+        display: grid;
+        grid-template-columns: 1fr 65px;
+        gap: 15px;
+        align-items: center;
+        border-bottom: 1px solid var(--rule);
+        padding: 7px 0;
+      }
+      .task-item b {
+        text-align: right;
+        color: var(--teal);
+        font-family: var(--num);
+        font-size: 27px;
+      }
+      .methods {
+        font-size: 18px;
+        line-height: 1.65;
+        color: var(--muted);
+      }
+      .bottom-note {
+        position: absolute;
+        left: 66px;
+        right: 66px;
+        bottom: 79px;
+        border-left: 4px solid var(--teal);
+        padding: 5px 0 5px 18px;
+        font-size: 21px;
+        line-height: 1.5;
+      }
+      .legend {
+        display: flex;
+        align-items: center;
+        gap: 30px;
+        color: var(--muted);
+        font-size: 18px;
+      }
+      .key {
+        width: 13px;
+        height: 13px;
+        display: inline-block;
+        margin-right: 8px;
+        vertical-align: 0;
+      }
+      .chart-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 23px;
+      }
+      .chart-top p {
+        font-size: 17px;
+        color: var(--muted);
+      }
+      .chart {
+        width: 100%;
+        height: 310px;
+        display: block;
+      }
+      .chart text,
+      .net text {
+        font-family: var(--sans);
+      }
+      .totals {
+        display: flex;
+        align-items: baseline;
+        gap: 31px;
+        border-top: 1px solid var(--rule);
+        padding-top: 10px;
+      }
+      .totals strong {
+        font-size: 21px;
+      }
+      .total {
+        font-size: 18px;
+        color: var(--muted);
+      }
+      .total b {
+        font: 700 30px var(--num);
+        color: var(--ink);
+        margin-left: 8px;
+      }
+      .fine {
+        font-size: 17px;
+        line-height: 1.5;
+        color: var(--muted);
+        margin-top: 10px;
+      }
+      .control {
+        display: grid;
+        grid-template-columns: 1fr 1.13fr;
+        gap: 60px;
+        align-items: center;
+        margin-top: 38px;
+      }
+      .visual-pair {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+        align-items: start;
+      }
+      .visual-pair figure {
+        text-align: center;
+      }
+      .visual-pair figcaption {
+        margin-top: 10px;
+      }
+      .seg-tile,
+      .map-tile {
+        height: 176px;
+        display: grid;
+        place-items: center;
+      }
+      .seg-tile {
+        background: var(--dark);
+      }
+      .seg-tile svg {
+        height: 145px;
+      }
+      .map-tile {
+        background: #eeeae2;
+      }
+      .map-tile img {
+        width: 154px;
+        height: 154px;
+        image-rendering: pixelated;
+      }
+      .weight-vector {
+        font: 600 21px/1.6 var(--num);
+        letter-spacing: 0.02em;
+        color: var(--teal);
+        margin: 20px 0 0;
+        text-align: left;
+      }
+      .small-title {
+        font-size: 20px;
+        font-weight: 670;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+      .control table td,
+      .edit-grid table td,
+      .case table td {
+        padding-top: 14px;
+        padding-bottom: 14px;
+      }
+      .model-name {
+        font: 600 22px var(--num);
+        letter-spacing: -0.015em;
+      }
+      .edit-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 55px;
+        margin-top: 34px;
+        align-items: center;
+      }
+      .patch {
+        background: var(--tint);
+        padding: 25px 29px 24px;
+      }
+      .patch .formula {
+        font-size: 32px;
+        line-height: 1.5;
+      }
+      .patch-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-top: 10px;
+        border-top: 1px solid #bdd0c8;
+        padding-top: 8px;
+      }
+      .patch-row span {
+        font-size: 19px;
+      }
+      .patch-row b {
+        font: 700 30px var(--num);
+        color: var(--teal);
+      }
+      .readout {
+        display: grid;
+        grid-template-columns: 1.04fr 1fr;
+        gap: 43px;
+        align-items: center;
+        margin-top: 24px;
+      }
+      .readout figure {
+        background: var(--tint);
+        padding: 13px 17px;
+      }
+      .readout .net {
+        height: 170px;
+      }
+      .readout .formula {
+        border-top: 1px solid #c0d2c9;
+        font-size: 26px;
+        text-align: center;
+        padding-top: 11px;
+        color: var(--teal);
+        font-weight: 650;
+      }
+      .readout .fine {
+        font-size: 17px;
+      }
+      .case {
+        display: grid;
+        grid-template-columns: 235px 1fr;
+        gap: 66px;
+        align-items: center;
+        margin: 27px 0 20px;
+      }
+      .case .image-tile {
+        height: 175px;
+        width: 175px;
+        padding: 8px;
+      }
+      .case figcaption {
+        text-align: center;
+      }
+      .case table td {
+        font-size: 28px;
+      }
+      .case table td:first-child {
+        font-size: 23px;
+      }
+      .case-result {
+        color: var(--teal);
+        font-weight: 700;
+      }
+      .finding {
+        padding: 16px 23px;
+        background: var(--tint);
+        font-size: 24px;
+        line-height: 1.45;
+        font-weight: 600;
+      }
+      .sources {
+        font-size: 16px;
+        color: var(--muted);
+        margin-top: 11px;
+      }
+      a {
+        color: var(--teal);
+        text-underline-offset: 3px;
+      }
+      @media print {
+        @page {
+          size: 320mm 180mm;
+          margin: 0;
+        }
+        html,
+        body,
+        body.live {
+          width: 320mm;
+          height: auto;
+          overflow: visible;
+          background: var(--paper);
+        }
+        #deck,
+        .live #deck {
+          position: static;
+          width: 320mm;
+          height: auto;
+          transform: none;
+          margin: 0;
+        }
+        .slide,
+        .live .slide,
+        .live .slide.current {
+          display: block;
+          width: 1280px;
+          height: 720px;
+          zoom: 0.94488189;
+          break-after: page;
+          break-inside: avoid;
+        }
+        .slide:last-of-type {
+          break-after: auto;
+        }
+        .foot .pagenum {
+          margin-right: 0;
+        }
+        .live #nav,
+        #nav {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main id="deck">
+      <section class="slide cover" aria-label="1枚目 2026.11.19　勉強会"><div class="cover-layout"><div>
+<h1>LLM は<em>重み</em>から<br>数字を読めるか</h1>
+<p class="intro">画像への応答からは、分類器の機能を調べられる。<br>重みだけで、その機能を推定・編集できるか。</p>
+<p class="cover-models">GPT-6.2-astra　/　GPT-6.1-terra　/　GPT-6-luna</p></div>
+<figure class="digit-plate"><div class="digit-grid"><img class="ink" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd+UAAABgElEQVR42u2WIUsEURSFv1nXslYNFlcQEWwWTa5RF1ywWUWDiChstYiYLCIIWyz+AQ2GTVq0iQaTCBo0rEFN2ob1WN7CY5jZ2TdPBGEvXAbuO/POzLxz7p1AEn8ZOf44uoRx0QfUgCZwDRSd7pbkmqOSQpNNSesu97u+4QBw7PNJ8w7YTWABmIzUS+Zo7oDLtE0CBx82ge8YDbRqz8AicPsbhHWgHEP4AXxFhNPjq9IZYMyQ2VkDVoAlYNeqr/modFjSq6XIUNKjpD1JBQtXlNQw65+SqpJ64/Z0tcC5pP4E7EbkwUZ8bXEDLAPvCetnaYLp9AxzJqeAl3YCtLA5YCeLD1djlJkUFWDCEs92FsJKh91nHNiyam9AmEWlD5ZokjAHFiaU9CRpOgmf95w2deNRO+6Bq6y9NLCEVTbXI2AwprW1Yt7H+NWID8NIRmuHaeMpjdDuIEmEDUkXxugFX0IklSTttyF0GsAuk35O0qkhOpE0a2pDLoRB97/03xP+ALXoDbZBns/wAAAAAElFTkSuQmCC" alt="MNISTテスト画像、数字0、テスト配列のインデックス3" width="28" height="28"><img class="ink" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd+UAAAA7UlEQVR42u3WPUpDQRTF8V+UgKQU/Oi0UgSDCjYWYmEnCNZW2YAbcR8WQrByA+mCIFq6AZuIpFK00GszC3jvhXexyIXhTHP4c+9wZqYTETJrQXLNgVVqC7+4ygIeFOBrFnAfH7jLAPbLKG+yznAbPdxWNXRmDP4DVrBbxtpqh5s4xHdV2KzAk6JvWTnsF72u5YqIJusoIt4j4jEilup4m3Z4imW84CtjpHsIDOsam8RiHc+YYifj8h5gFeOs12Kj6DQLeF70PgN4jLXMB/gCi3jCqG1gD2dlP8RPE2CdWHRLVxNc4rNt4Pyb+D+Bf9vYgv6jU3vkAAAAAElFTkSuQmCC" alt="MNISTテスト画像、数字1、テスト配列のインデックス2" width="28" height="28"><img class="ink" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd+UAAABhklEQVR42u2WvUsDQRDFfycmoAiiKSQgIsRKwSq9pY1oI9j4Twh+gL1WNlZ2WmgTJCIGSwtBTCMiAVEEwS5qIYgSgxqfzRTLYXDvTFI5sDA3e7sz7+3szAaSaKW00WJpucP2CP/OAx3AKDBttg2gCGx77yLJZ+Qk1eqMG0kDnvt4UZpzEAFcA+tAwb4zwGyjEGYlvRuSkqRBSV02l5R0bnNrvgh/O8M0EACXwDhQDp3psOmHjUqaAjAEvABPobkZIBE5TX2pCI0FSW9G56mkTt+1cZxNOM7KksairI9z8bNA0sng42ZSui+pYui2nIylGZSmJT2aswdJmTjnH4XSPJAyfQe4jVVMPSOblFQ1dEdxqIyCMAUsO3fuAniN3S48olp1CnX+L+gkEXh0/KqDrj9U3praDwF6gY+Q7dlsCaDbbD3AnPNPDVgCKlEdln6w7RrqPquv9eQeWPGhdA+YihDUJ/Bl+gFwZvoJUAw8X22Loc4wEkKzCdw5AV7V2yj4fyb+O4wq30yY9n/S9BkPAAAAAElFTkSuQmCC" alt="MNISTテスト画像、数字2、テスト配列のインデックス1" width="28" height="28"><img class="ink" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd+UAAABzElEQVR42u2WPWsVURCGn6sRISRRgpBYCAHxAwSxUMSArQRFbSRiEG20sNE/oKCFPyBgnSbB1ClCEMUoliIYPxCUoIhWKlxQ/L4+NnPhsNy9Oe4NAcWBF/bszJz3nPnY2ZrKSsoqVlj+fcKuNroeYBNwLtYTwMOOGdVW6FGvqI0E39VJtb/EJwtliqsFshRv1QNVCcty+KoZAOBahPU8UAcGgRngMtC9XCGdjdtMF97vV98lt51U1yxHSI0Nd7TQDat3E9IptatTwpux2VCJfq/6PiEd7TSHzwrrM8Bt4HhgCJhO9Fs6zeGpOPkRdbv6tU3VNtSX6jF1XdWQ9qknox83q/UlCJv4pJ5Qu8sIa5nT4hAwCvQDBzPsnwBjwNPckJZhtbo+sE3dmqzH1Y/JbW+ou3JDWsSGaIel7IbVhYR0rgrhYXVR/aIezbDvVV8EYV0d+VPCsSBrqD/VfRk+e9Qf4TOf04epXAcuxXMtc4buDFuAR1WKpk+9FSdeVCeiYIp2F9TH6uckj+NV2qI5kBeAjcBa4Feg3UC/Hy31oWpboJ6O6nvT5gNwT72oDlRt/FYyCPQCZ4E7wG7gOfAAeA18a+VU+/9f+tcT/ga4bsRwk1AzrAAAAABJRU5ErkJggg==" alt="MNISTテスト画像、数字3、テスト配列のインデックス18" width="28" height="28"><img class="ink" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd+UAAABYklEQVR42u2WvyuFURjHP1d0/SqlWCTKRO5AGYwMlMHibiarf8FuEf+CbMgmozIYFcViICZ3MIhEfvQxOOom956T+3YtvvV03t732/s573Oec543p1JPNVBn/QP/FDgKXEU8U0BvVsBpIB/xzAIrWQAbgZkE3xEwBLTVCpwAxoH1iK8zAFsrOtRYFNRb9Vxtj3gP1De1q5InBbipPqljEV+nn3qvBVhU79XThImtBti+2vRb4FZI0WLE16+W1Bd1spq32ks61OsAjE1sOfiimahWpXmgB9hMqOKBMJ7VctI8ACdAIZR7JXUDRSAHHKZs6Ep6Ai6AOWAPWPv2fDh8WR/w1VTjzTWS80F1W30Ma1QeJfVGfS271xJbw1xixx8pW6cv7YRxA5hPyFiaIeg4xE+6LLsuAKdZAKspF4IYLCugScWSYcdvDuNzvYALwB2wlJaP+LEVi93Y+fmbbfH/m5isDwWvjl0metJxAAAAAElFTkSuQmCC" alt="MNISTテスト画像、数字4、テスト配列のインデックス4" width="28" height="28"><img class="ink" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd+UAAABmElEQVR42u2WT0sWURTGf+MrlRlIILQRlZI2rTQKadUyCPwEtm3jotoHKdTKrQvBD6A7DVpE1C6oEJJAQV76QxCY7lpUYOqvzRFGeWcanYugdOBwOfdwz3PPn/vMZCpHKW0csZx8wPZEcc4DvTn7K/AAWAaawIdUgLeBEeAmMJDbbwJ9wOmwG7uO7BBTegkYA+4CZ4CswplGnQx7gHsl/lVgpU4Pu4H7wGvgObAJ/AB+Ap3Ai+jVO2AJ+B2+1qKWaaf6Xt1WR3L7/bH2qm3/iLFHy5yn1KcB9lg9e5DABwU8pz4JsHW1KwVYGeBogH1Re1KBqYVMcyPWJeBbUqopuMlGZPhLfaQOpsqw6OEL7OTsHWAaeBsU9jH31q4AbypXouAmk5FhVf2uztUZmoZ6TW2qn9U/FUC31IeHHZptYBG4DFwEbgVRL5YUKwOupvoevgpaWwh7C5gBrgOzKaa0SIf2lfFllHLXnqpDba20Q51t0b9NdT64Nykg6gX1mboWYJ/U8brvsIrcAYaBCWCj6qHs/3/psQf8C8QAs4AyW2KOAAAAAElFTkSuQmCC" alt="MNISTテスト画像、数字5、テスト配列のインデックス8" width="28" height="28"><img class="ink" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd+UAAABwUlEQVR42u2Wz0uUURSGnwlBEAYEN84w0cJoXRtR+hfc1MZtECEuKly0CYMgcBfuDMq2LUtsVUQQKAhq4KKQhKCyFgptEkRzeFp0hMsw09xPa2jhgcN3f5x733PuPe/5bkmlk3KKDst/DdgNrAB1YO5fA3YD08B5QGD1yCGqOXpLPVBfqkOZa5pqboT98X0FLHXiDsvAzwA8nmQcQ1WtqwvHOcpD7crwaTLT92GgFu014MNRI/wUEV5pMf9A/az+iMQ6UL+rd5rZtwPrUb/Ghul4lzoYc3V/y5b6LBxU3VTPFAW8ER7PNNzp3SSaL+qUWkts5mNuqOgdXojvRsOdjkUBeA1MAO8a1m202rAdYLWhfw4YjfYj4Caw32Lt29BCgGWgFApwHegFngDjGbzdL0p8EwWoRLvS5lSuAt/+xu9pDNgGLgK3gb4mNk+BXeB+UR5W1Y+RbRPJeEVdjvE3ajnGR9Qlda8VB3No8SJ49jw4mc6NqAPqafVh2O38CSwHsKauJbX0sjocek9djEjr6nv1UrvKlVPaKup6QvRDgLQ/q/blFO9S5qutN/h3FrgGzCaZ+xhYz8260skz8QSwqPwCzmRce7Cq3zUAAAAASUVORK5CYII=" alt="MNISTテスト画像、数字6、テスト配列のインデックス11" width="28" height="28"><img class="ink" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd+UAAABVUlEQVR42u2Wuy4EYRiGn3UoJBorJAqHRKLQiELiHImOqLiF1aDSuwAX4A64BJ1CpUCxBeIYQYRIkFCsYB+Fv9iI3TV2dqt9k0n++ef9/ifvJN/Ml1CppGqosKrAKjCy6go8mwNSwC2QAdaBO+CsFGCiQB9eAF0/9l6AgyJn3gCrwF7UhCmgDzgEeoF+YAIYBK6B9hzvB/AAtIX7q3zARMQvTVMA7wEDOfsZ4AQ4ApLAIrD26wlqXNes+qmm1WQ+X1ywVvXeb80W8sbVFgtAC/AEHBd0xpBuRH1Ts+p4MX8cCaeAemAL2CnqLjFdg7qvZtThv9SUClwJr3LzrzWlwKbVd/VZHSo3sFk9D+k2otT+B1ar7gbYqdpdbmBPgGXVmaj1UWGd6mWALauJqMCofTgPdIT1NmA5//hjwFIlR4xRoDGsz4HXuEeMfEoDk8Bj3CNGWfQFafeJ6nsrdOUAAAAASUVORK5CYII=" alt="MNISTテスト画像、数字7、テスト配列のインデックス0" width="28" height="28"><img class="ink" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd+UAAABq0lEQVR42u2WsUvVURTHP0+CEHQIaTAXc4hAFKJBx3CwCBoiyqDBIegfcHCNhobETQdxS2iI2hqMaH0iFBISD3Ko4SVRQ0qELfZpOcHl5/s9f7/3ShzehQP3/M6553vvPed876+icpSjiyMeHcB/Pk60uG44WfvufwJ2A3eB+WTtJpCWehV4BrwBfhyIoBaVbnVV/a3uJ5Knv1f7s3EqBftwDFgALoa+DqzG/DVwFtgDdoAbwGVgEFgBpls54aPkBGtq3yH+y+G7mbW1UjRXge+H2G+12xYfk/nNJn5DwDLQE/rbdopmMQris3o+YzunLoX9r7xoVDRlAPvUagTbiKodUq+o35Icf1Ln1N5GccoAop6KQthXa+pO0gZf1fvhkxujLOC9uNK07+rqtbwTtQI4qT7N5CeV2TKbzjOcUR+o2xkmeanOqJeSq/2lnm4H8In6JQHZUx+ro3FtJ9U76s+EysaLAjZq/A/AVKJvAa+A60FXI8CFxL4N1ArTRs5OHqq7sXub5K8erVE4h83IewC4DfQDE8n3SjxHz4PQd8vwYqXz19YBPPaAfwBI070BnsOyxQAAAABJRU5ErkJggg==" alt="MNISTテスト画像、数字8、テスト配列のインデックス61" width="28" height="28"><img class="ink" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd+UAAABVElEQVR42u2WPS8EURSG393EVyKKFYlCKGxEFKLwE3QKDbKi8xf0SqWPQqLaREElUa9uOzql2IJoFIuQLBEy+2heMpkIQ+5OgZuczJx37uTJvec9NzcHKMuRV8bjH/j3gD2StiRVJbX9iAikjUXgAogcvd/49z3SThwA6kAzBtwDCq0CbhgSB0bALbAMtIcEDgH3BpwAlQT0CugPCZzxyqrOO4EloGYd4Djt9qZxaYckJK07f5JUllSzjqRHSc+h2mLBz+mEPhl7P5LUCNUW87H6jQJzdugLcONtvQbGQtWwYDcmXVoBisCp8+2QbTEF3NkgTWDT5hGwau0cGA4FfIOWgTWgO6Z3AQde5U5I4GdRMvDyq/YIBczbSBGwkgVQwATwYOhIFkD5XG0C+65ty4F9wJmh41kABQwauJsVUMAh0Pjo9GnVnWZWUl1SMfkh9+tv3q9Zo5NAAwGvigAAAABJRU5ErkJggg==" alt="MNISTテスト画像、数字9、テスト配列のインデックス7" width="28" height="28"></div><figcaption>MNIST のテスト画像　28 × 28 画素</figcaption></figure></div><footer class="foot"><span>2026.11.19　勉強会</span><span class="pagenum">01 / 08</span></footer></section>
+<section class="slide " aria-label="2枚目 実験設定"><h2>画像で学習し、重みだけを出題する</h2>
+<p class="intro">各分類器が学習するのは「ある数字」と「それ以外」を分ける二値分類。</p>
+<div class="flow"><figure class="center"><div class="image-tile"><img class="ink" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd+UAAABVUlEQVR42u2Wuy4EYRiGn3UoJBorJAqHRKLQiELiHImOqLiF1aDSuwAX4A64BJ1CpUCxBeIYQYRIkFCsYB+Fv9iI3TV2dqt9k0n++ef9/ifvJN/Ml1CppGqosKrAKjCy6go8mwNSwC2QAdaBO+CsFGCiQB9eAF0/9l6AgyJn3gCrwF7UhCmgDzgEeoF+YAIYBK6B9hzvB/AAtIX7q3zARMQvTVMA7wEDOfsZ4AQ4ApLAIrD26wlqXNes+qmm1WQ+X1ywVvXeb80W8sbVFgtAC/AEHBd0xpBuRH1Ts+p4MX8cCaeAemAL2CnqLjFdg7qvZtThv9SUClwJr3LzrzWlwKbVd/VZHSo3sFk9D+k2otT+B1ar7gbYqdpdbmBPgGXVmaj1UWGd6mWALauJqMCofTgPdIT1NmA5//hjwFIlR4xRoDGsz4HXuEeMfEoDk8Bj3CNGWfQFafeJ6nsrdOUAAAAASUVORK5CYII=" alt="MNISTテスト画像、数字7、テスト配列のインデックス0" width="28" height="28"></div><figcaption>28 × 28 画素</figcaption></figure><div class="flow-arrow">→</div>
+<figure class="center"><div class="image-tile"><img class="ink" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOCAYAAAAfSC3RAAAArElEQVR42p2SsQkCQRBF34kiKByWIAaCJhZhG8ZWIBiKRWgFYmhkbAEWYayBiaCJ4DM58Fjc07sPG+wf3szOziQqVVSjoiqD9eA+BtrAETgXgUnQ4wZoASPgBTQBgSdwAKaxipOc3wHSLMEsS/CR+uv01bvazfv/gDt1Efq/oJ56UtMwVjSOBrAF1sCtzBznQAKsvkYjTxyoD3UYayNWcZl9/7Xsyu2zLbrEwDeg38OkOdaMVgAAAABJRU5ErkJggg==" alt="同じ7を2×2の平均で14×14に縮小" width="14" height="14"></div><figcaption>14 × 14 画素<br>（2 × 2 の平均）</figcaption></figure><div class="flow-arrow">→</div>
+<figure><svg class="net" viewBox="0 0 540 178" role="img" aria-label="全結合ネットワーク。入力196、隠れ層128と64、出力1。各層は一部のユニットを表示"><path d="M50 30L203 27" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 30L203 54" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 30L203 108" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 30L203 135" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 57L203 27" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 57L203 54" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 57L203 108" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 57L203 135" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 105L203 27" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 105L203 54" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 105L203 108" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 105L203 135" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 132L203 27" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 132L203 54" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 132L203 108" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 132L203 135" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 27L350 30" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 27L350 57" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 27L350 105" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 27L350 132" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 54L350 30" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 54L350 57" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 54L350 105" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 54L350 132" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 108L350 30" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 108L350 57" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 108L350 105" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 108L350 132" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 135L350 30" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 135L350 57" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 135L350 105" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 135L350 132" stroke="#a0b4ad" stroke-width="1.1"/><path d="M350 30L490 81" stroke="#a0b4ad" stroke-width="1.1"/><path d="M350 57L490 81" stroke="#a0b4ad" stroke-width="1.1"/><path d="M350 105L490 81" stroke="#a0b4ad" stroke-width="1.1"/><path d="M350 132L490 81" stroke="#a0b4ad" stroke-width="1.1"/><circle cx="50" cy="30" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="50" cy="57" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="50" cy="105" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="50" cy="132" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="50" cy="75" r="1.4" fill="#6a817b"/><circle cx="50" cy="81" r="1.4" fill="#6a817b"/><circle cx="50" cy="87" r="1.4" fill="#6a817b"/><text x="50" y="166" fill="#28403f" font-size="17" text-anchor="middle">入力 196</text><circle cx="203" cy="27" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="203" cy="54" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="203" cy="108" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="203" cy="135" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="203" cy="75" r="1.4" fill="#6a817b"/><circle cx="203" cy="81" r="1.4" fill="#6a817b"/><circle cx="203" cy="87" r="1.4" fill="#6a817b"/><text x="203" y="166" fill="#28403f" font-size="17" text-anchor="middle">ReLU 128</text><circle cx="350" cy="30" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="350" cy="57" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="350" cy="105" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="350" cy="132" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="350" cy="75" r="1.4" fill="#6a817b"/><circle cx="350" cy="81" r="1.4" fill="#6a817b"/><circle cx="350" cy="87" r="1.4" fill="#6a817b"/><text x="350" y="166" fill="#28403f" font-size="17" text-anchor="middle">ReLU 64</text><circle cx="490" cy="81" r="6.6" fill="#006858" stroke="#407366" stroke-width="1.7"/><text x="490" y="166" fill="#28403f" font-size="17" text-anchor="middle">出力 1</text></svg></figure></div>
+<div class="data-strip"><div class="sample"><h3>LLM に与える情報</h3><pre>widths 196 128 64 1
+.29425 -.033111 .10525 -.047522 -.37595 -.17083  …
+.16202 .075377 .030328 .007268 .053141 .083768  …</pre><p class="caption">層の幅と数値列の抜粋。実験では全重み・全バイアスを提示。</p></div>
+<div class="question"><h3>どの数字を検出する？</h3><p>回答は 0〜9 の1個。<br>回答役に画像や推論例は渡さない。</p></div></div>
+<p class="bottom-note">画像を各数字5枚ずつ入力し、平均ロジットが最大の数字を選ぶと、分類器50個すべての対象を特定できた。</p><footer class="foot"><span>実験設定</span><span class="pagenum">02 / 08</span></footer></section>
+<section class="slide " aria-label="3枚目 実験設定"><h2>3モデルに、同じ72問を出題</h2>
+<p class="intro">各問で新しいコンテキストを開始。推論設定は medium。許可したツール操作は問題文の表示のみ。</p>
+<div class="setup"><div><h3>学習済み MNIST 分類器</h3><table><thead><tr><th scope="col">各層の幅</th><th scope="col">パラメータ数</th><th scope="col">分類器の性能¹</th></tr></thead><tbody><tr><td>196 → 1</td><td>197</td><td>95.3%</td></tr><tr><td>196 → 4 → 1</td><td>793</td><td>96.6%</td></tr><tr><td>196 → 32 → 1</td><td>6,337</td><td>98.4%</td></tr><tr><td>196 → 32 → 32 → 1</td><td>7,393</td><td>98.7%</td></tr><tr><td>196 → 128 → 64 → 1</td><td>33,537</td><td>98.9%</td></tr></tbody></table>
+<p class="fine">¹ 公式テスト画像1万枚での balanced accuracy。各構成10個の平均。</p></div>
+<div><h3>1モデルあたりの内訳</h3><div class="task-list"><div class="task-item"><span>MNIST の対象数字を同定</span><b>50問</b></div><div class="task-item"><span>7セグメントの対象数字を同定</span><b>10問</b></div><div class="task-item"><span>4ビット入力の局所編集</span><b>4問</b></div><div class="task-item"><span>MNIST の出力層を編集</span><b>8問</b></div></div>
+<p class="methods">MNIST の同定は5構成 × 数字10種。<br>各数字につき正例5,000枚・負例5,000枚で学習。<br>共有ファイル環境で、全操作の独立監査は未実施。</p></div></div>
+<p class="bottom-note">重みは有効数字最大5桁。最大の問題文は292,204バイト（参考値 130,669 トークン）。</p><footer class="foot"><span>実験設定</span><span class="pagenum">03 / 08</span></footer></section>
+<section class="slide " aria-label="4枚目 数字の同定　MNIST"><h2>重みから対象数字を当てた割合</h2>
+<p class="intro">棒は正答率。棒の上は「正答数 / 手順に適合した問題数」。各構成の割当は10問。</p>
+<div class="chart-top"><div class="legend"><span><i class="key" style="background:#006858"></i>6.2-astra</span><span><i class="key" style="background:#4e69ac"></i>6.1-terra</span><span><i class="key" style="background:#ac572e"></i>6-luna</span></div><p>破線は10択の偶然正答率</p></div>
+<svg class="chart" viewBox="0 0 1120 307" role="img"><title>モデル別の数字同定正答率</title><desc>197 パラメータ 6.2-astra 9/10、6.1-terra 2/10、6-luna 0/10。793 パラメータ 6.2-astra 10/10、6.1-terra 2/10、6-luna 2/9。6337 パラメータ 6.2-astra 8/10、6.1-terra 1/10、6-luna 1/9。7393 パラメータ 6.2-astra 6/10、6.1-terra 2/10、6-luna 1/9。33537 パラメータ 6.2-astra 5/10、6.1-terra 3/10、6-luna 1/7</desc><path d="M60 262.0H1110" stroke="#ccd5d0"/><text x="50" y="267.0" text-anchor="end" font-size="16" fill="#52676c">0%</text><path d="M60 215.2H1110" stroke="#ccd5d0"/><text x="50" y="220.2" text-anchor="end" font-size="16" fill="#52676c">20%</text><path d="M60 168.4H1110" stroke="#ccd5d0"/><text x="50" y="173.4" text-anchor="end" font-size="16" fill="#52676c">40%</text><path d="M60 121.6H1110" stroke="#ccd5d0"/><text x="50" y="126.6" text-anchor="end" font-size="16" fill="#52676c">60%</text><path d="M60 74.80000000000001H1110" stroke="#ccd5d0"/><text x="50" y="79.80000000000001" text-anchor="end" font-size="16" fill="#52676c">80%</text><path d="M60 28.0H1110" stroke="#ccd5d0"/><text x="50" y="33.0" text-anchor="end" font-size="16" fill="#52676c">100%</text><path d="M60 238.6H1110" stroke="#5b6866" stroke-width="1.7" stroke-dasharray="5 5"/><text x="50" y="243.6" text-anchor="end" font-size="16" fill="#52676c">10%</text><text x="164" y="294" text-anchor="middle" fill="#172b32" font-size="21">197</text><rect x="99" y="51.400000000000006" width="28" height="210.6" fill="#006858"/><text x="113" y="43.400000000000006" text-anchor="middle" font-size="19" fill="#006858" font-weight="650">9/10</text><rect x="150" y="215.2" width="28" height="46.80000000000001" fill="#4e69ac"/><text x="164" y="207.2" text-anchor="middle" font-size="19" fill="#4e69ac" font-weight="650">2/10</text><rect x="201" y="260" width="28" height="2" fill="#ac572e"/><text x="215" y="254.0" text-anchor="middle" font-size="19" fill="#ac572e" font-weight="650">0/10</text><text x="373" y="294" text-anchor="middle" fill="#172b32" font-size="21">793</text><rect x="308" y="28.0" width="28" height="234.0" fill="#006858"/><text x="322" y="20.0" text-anchor="middle" font-size="19" fill="#006858" font-weight="650">10/10</text><rect x="359" y="215.2" width="28" height="46.80000000000001" fill="#4e69ac"/><text x="373" y="207.2" text-anchor="middle" font-size="19" fill="#4e69ac" font-weight="650">2/10</text><rect x="410" y="210.0" width="28" height="52.0" fill="#ac572e"/><text x="424" y="202.0" text-anchor="middle" font-size="19" fill="#ac572e" font-weight="650">2/9</text><text x="582" y="294" text-anchor="middle" fill="#172b32" font-size="21">6,337</text><rect x="517" y="74.80000000000001" width="28" height="187.2" fill="#006858"/><text x="531" y="66.80000000000001" text-anchor="middle" font-size="19" fill="#006858" font-weight="650">8/10</text><rect x="568" y="238.6" width="28" height="23.400000000000006" fill="#4e69ac"/><text x="582" y="230.6" text-anchor="middle" font-size="19" fill="#4e69ac" font-weight="650">1/10</text><rect x="619" y="236.0" width="28" height="26.0" fill="#ac572e"/><text x="633" y="228.0" text-anchor="middle" font-size="19" fill="#ac572e" font-weight="650">1/9</text><text x="791" y="294" text-anchor="middle" fill="#172b32" font-size="21">7,393</text><rect x="726" y="121.6" width="28" height="140.4" fill="#006858"/><text x="740" y="113.6" text-anchor="middle" font-size="19" fill="#006858" font-weight="650">6/10</text><rect x="777" y="215.2" width="28" height="46.80000000000001" fill="#4e69ac"/><text x="791" y="207.2" text-anchor="middle" font-size="19" fill="#4e69ac" font-weight="650">2/10</text><rect x="828" y="236.0" width="28" height="26.0" fill="#ac572e"/><text x="842" y="228.0" text-anchor="middle" font-size="19" fill="#ac572e" font-weight="650">1/9</text><text x="1000" y="294" text-anchor="middle" fill="#172b32" font-size="21">33,537</text><rect x="935" y="145.0" width="28" height="117.0" fill="#006858"/><text x="949" y="137.0" text-anchor="middle" font-size="19" fill="#006858" font-weight="650">5/10</text><rect x="986" y="191.8" width="28" height="70.19999999999999" fill="#4e69ac"/><text x="1000" y="183.8" text-anchor="middle" font-size="19" fill="#4e69ac" font-weight="650">3/10</text><rect x="1037" y="228.57142857142856" width="28" height="33.428571428571445" fill="#ac572e"/><text x="1051" y="220.57142857142856" text-anchor="middle" font-size="19" fill="#ac572e" font-weight="650">1/7</text></svg><div class="totals"><strong>全サイズ合計</strong><span class="total">6.2-astra<b>38/50</b></span><span class="total">6.1-terra<b>10/50</b></span><span class="total">6-luna<b>5/44</b></span></div>
+<p class="fine">横軸はパラメータ数。Astra は全5構成で偶然水準を上回った（片側置換検定、Holm補正5%）。<br>無効回答は誤答。6-luna の許可外の送信6件まで含めると 5/50。</p><footer class="foot"><span>数字の同定　MNIST</span><span class="pagenum">04 / 08</span></footer></section>
+<section class="slide " aria-label="5枚目 数字の同定　対照課題"><h2>入力の意味が分かる7セグメント表示</h2>
+<p class="intro">各入力が対応する位置を明示し、7個の重みとバイアスから対象数字を答えさせた。</p>
+<div class="control"><div><div class="visual-pair">
+<figure><div class="seg-tile"><svg viewBox="0 0 108 174" role="img" aria-label="上と右の2本が点灯した7セグメントの数字7"><polygon points="24,8 90,8 97,15 87,22 28,22 16,15" fill="#d1efcc"/><polygon points="99,18 105,24 97,79 90,85 83,78 91,28" fill="#d1efcc"/><polygon points="90,89 97,95 90,148 80,155 75,148 82,98" fill="#d1efcc"/><polygon points="73,151 80,158 72,165 10,165 4,158 14,151" fill="#375152"/><polygon points="8,93 16,87 22,94 15,147 5,154 0,147" fill="#375152"/><polygon points="18,19 26,27 19,76 13,84 7,77 13,26" fill="#375152"/><polygon points="23,80 79,80 86,87 76,94 22,94 15,87" fill="#375152"/></svg></div><figcaption>7セグメントの「7」</figcaption></figure>
+<figure><div class="map-tile"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOCAIAAACQKrqGAAACJ0lEQVR42lWPy04TURiA/3PmzAWml5lpYXAiVRQKRWOCmoiJRCMmJkbrM5i48A1c8QK+g08gxoUJ8bIggUQtETRiRLAXGCraTulMW9oz07kcF0YTvtW3+DYfcqkD/4giFjFgjAEAIRjBMch/C0Nmd7ydfadL/VMj8VRSSsgC4TBCx1IWet7nSienhWHEjCH543frxUrZsunpE4n7c2Oz53VdG0AuddpmRUwotGlZm+uioilnJo8GhvQkz4IAE36jZFMvnD2nY8Yi2qiZK28i3x8cNrSJ6eb2V42jpZfPnEqx+m55Qmxv7drg9Ujk+weF1VTugprNaQjVmi4niB+eLKjjU6HbixujoqJemWacJGFgrLVbDGjvR7W9X+u2u/17T+2ju4/Vs5MNNRv2vS+/AsM1Q4YJ5oXMzTvCzPxetdXp+bEBPptRPD/KXL9dWnruhFGcfvp9OZ8EQC51WrtFWTeqTpiQ+cXl8o2LhpGWhYC29krK2DhtHvKyLMQSBBgTk+rqlv12bV8SyMKDS+29Mk/ii6u1kdRwo1AXCM5fVRDGGBAqOajWpEvvzbQidWnA6Zm1b3WBx68LZrHaSsoC40iEMAGAn1Z3fqQz90jfEdVXBbPvRzPZdHZUqRy0Y4NC3aFhyAQeEwDI6PFBiSCMZ4d5Ppayi1t8BAE3+jA/vbFtWY4LCODvFgBEvm8eulq/YW2un7x2yylv83IcYayOT7nNhqSlAeAPpVsMfjPG7NYAAAAASUVORK5CYII=" width="14" height="14" alt="7用の線形分類器。赤は正の重み、青は負の重み"></div><figcaption>MNIST の「7」の重み<br>赤は正、青は負</figcaption></figure></div>
+<p class="weight-vector">+2　+2　+2　−2　−2　−2　−2</p>
+<p class="caption">上・右上・右下が +2。バイアスは −5。</p></div>
+<div><table><thead><tr><th scope="col">正答 / 適合</th><th scope="col">7セグメント<br>8パラメータ</th><th scope="col">MNIST 線形<br>197パラメータ</th></tr></thead><tbody><tr><td><span class="model-name">6.2-astra</span></td><td>10/10</td><td>9/10</td></tr><tr><td><span class="model-name">6.1-terra</span></td><td>10/10</td><td>2/10</td></tr><tr><td><span class="model-name">6-luna</span></td><td>10/10</td><td>0/10</td></tr></tbody></table></div></div>
+<p class="bottom-note">2つの課題では、入力表現も重みの構造も異なる。</p><footer class="foot"><span>数字の同定　対照課題</span><span class="pagenum">05 / 08</span></footer></section>
+<section class="slide " aria-label="6枚目 数値編集　4ビット入力"><h2>一方の出力だけで、1ビットを反転する</h2>
+<p class="intro">30パラメータのネットを4個用意。出力層の数値を最大2個まで変更できる。</p>
+<div class="edit-grid"><div class="patch"><h3>1問目の編集例</h3><p class="formula">−2x₃ → −2 + 2x₃</p>
+<p class="caption">隠れユニットの出力は 1.25x₃</p>
+<div class="patch-row"><span>出力の重み</span><b>−1.6 → +1.6</b></div>
+<div class="patch-row"><span>バイアス</span><b>7 → 5</b></div></div>
+<div><table><thead><tr><th scope="col">モデル</th><th scope="col">成功 / 適合</th><th scope="col">合致した出力値</th></tr></thead><tbody><tr><td><span class="model-name">6.2-astra</span></td><td>4/4</td><td>128/128</td></tr><tr><td><span class="model-name">6.1-terra</span></td><td>4/4</td><td>128/128</td></tr><tr><td><span class="model-name">6-luna</span></td><td>2/4</td><td>96/128</td></tr></tbody></table>
+<p class="fine">1問につき全16入力 × 2出力。全32値が許容誤差0.001以内で成功。</p></div></div>
+<p class="bottom-note">6-luna の失敗2問は、重みの符号を反転し、必要なバイアス変更を省略していた。</p><footer class="foot"><span>数値編集　4ビット入力</span><span class="pagenum">06 / 08</span></footer></section>
+<section class="slide " aria-label="7枚目 数値編集　MNIST"><h2>最終層を編集し、出力の符号を反転する</h2>
+<p class="intro">すべての入力でロジットを −1 倍にする。最終層の全重みとバイアスを数値で提出。</p>
+<div class="readout"><figure><svg class="net" viewBox="0 0 540 178" role="img" aria-label="全結合ネットワーク。入力196、隠れ層128と64、出力1。各層は一部のユニットを表示"><path d="M50 30L203 27" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 30L203 54" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 30L203 108" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 30L203 135" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 57L203 27" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 57L203 54" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 57L203 108" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 57L203 135" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 105L203 27" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 105L203 54" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 105L203 108" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 105L203 135" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 132L203 27" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 132L203 54" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 132L203 108" stroke="#a0b4ad" stroke-width="1.1"/><path d="M50 132L203 135" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 27L350 30" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 27L350 57" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 27L350 105" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 27L350 132" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 54L350 30" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 54L350 57" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 54L350 105" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 54L350 132" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 108L350 30" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 108L350 57" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 108L350 105" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 108L350 132" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 135L350 30" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 135L350 57" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 135L350 105" stroke="#a0b4ad" stroke-width="1.1"/><path d="M203 135L350 132" stroke="#a0b4ad" stroke-width="1.1"/><path d="M350 30L490 81" stroke="#006858" stroke-width="2"/><path d="M350 57L490 81" stroke="#006858" stroke-width="2"/><path d="M350 105L490 81" stroke="#006858" stroke-width="2"/><path d="M350 132L490 81" stroke="#006858" stroke-width="2"/><circle cx="50" cy="30" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="50" cy="57" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="50" cy="105" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="50" cy="132" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="50" cy="75" r="1.4" fill="#6a817b"/><circle cx="50" cy="81" r="1.4" fill="#6a817b"/><circle cx="50" cy="87" r="1.4" fill="#6a817b"/><text x="50" y="166" fill="#28403f" font-size="17" text-anchor="middle">入力 196</text><circle cx="203" cy="27" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="203" cy="54" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="203" cy="108" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="203" cy="135" r="6.6" fill="#ffffff" stroke="#407366" stroke-width="1.7"/><circle cx="203" cy="75" r="1.4" fill="#6a817b"/><circle cx="203" cy="81" r="1.4" fill="#6a817b"/><circle cx="203" cy="87" r="1.4" fill="#6a817b"/><text x="203" y="166" fill="#28403f" font-size="17" text-anchor="middle">ReLU 128</text><circle cx="350" cy="30" r="6.6" fill="#006858" stroke="#407366" stroke-width="1.7"/><circle cx="350" cy="57" r="6.6" fill="#006858" stroke="#407366" stroke-width="1.7"/><circle cx="350" cy="105" r="6.6" fill="#006858" stroke="#407366" stroke-width="1.7"/><circle cx="350" cy="132" r="6.6" fill="#006858" stroke="#407366" stroke-width="1.7"/><circle cx="350" cy="75" r="1.4" fill="#6a817b"/><circle cx="350" cy="81" r="1.4" fill="#6a817b"/><circle cx="350" cy="87" r="1.4" fill="#6a817b"/><text x="350" y="166" fill="#28403f" font-size="17" text-anchor="middle">ReLU 64</text><circle cx="490" cy="81" r="6.6" fill="#006858" stroke="#407366" stroke-width="1.7"/><text x="490" y="166" fill="#28403f" font-size="17" text-anchor="middle">出力 1</text></svg><div class="formula">w · h + b → (−w) · h − b</div></figure>
+<div><table><thead><tr><th scope="col">モデル</th><th scope="col">793パラメータ<br>5値を編集</th><th scope="col">33,537パラメータ<br>65値を編集</th></tr></thead><tbody><tr><td><span class="model-name">6.2-astra</span></td><td>4/4</td><td>4/4</td></tr><tr><td><span class="model-name">6.1-terra</span></td><td>4/4</td><td>4/4</td></tr><tr><td><span class="model-name">6-luna</span></td><td>4/4</td><td>1/4</td></tr></tbody></table>
+<p class="fine">手順に適合し全値一致した数 / 初回の割当数。<br>提出値を代入して、テスト画像1万枚でも照合。</p></div></div>
+<p class="bottom-note">最大構成の6-luna は、ほかに2件が全値一致・許可外送信、1件が未完。未完の1件は独立再試行で全値一致。</p><footer class="foot"><span>数値編集　MNIST</span><span class="pagenum">07 / 08</span></footer></section>
+<section class="slide " aria-label="8枚目 考察"><h2>同じ「7」の分類器に、2通りの問い</h2>
+<p class="intro">33,537パラメータの同一チェックポイント。数字の同定と最終層の編集は別のコンテキストで実施。</p>
+<div class="case"><figure><div class="image-tile"><img class="ink" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd+UAAABVUlEQVR42u2Wuy4EYRiGn3UoJBorJAqHRKLQiELiHImOqLiF1aDSuwAX4A64BJ1CpUCxBeIYQYRIkFCsYB+Fv9iI3TV2dqt9k0n++ef9/ifvJN/Ml1CppGqosKrAKjCy6go8mwNSwC2QAdaBO+CsFGCiQB9eAF0/9l6AgyJn3gCrwF7UhCmgDzgEeoF+YAIYBK6B9hzvB/AAtIX7q3zARMQvTVMA7wEDOfsZ4AQ4ApLAIrD26wlqXNes+qmm1WQ+X1ywVvXeb80W8sbVFgtAC/AEHBd0xpBuRH1Ts+p4MX8cCaeAemAL2CnqLjFdg7qvZtThv9SUClwJr3LzrzWlwKbVd/VZHSo3sFk9D+k2otT+B1ar7gbYqdpdbmBPgGXVmaj1UWGd6mWALauJqMCofTgPdIT1NmA5//hjwFIlR4xRoDGsz4HXuEeMfEoDk8Bj3CNGWfQFafeJ6nsrdOUAAAAASUVORK5CYII=" alt="MNISTテスト画像、数字7、テスト配列のインデックス0" width="28" height="28"></div><figcaption>学習した対象は「7」</figcaption></figure>
+<table><thead><tr><th scope="col">モデル</th><th scope="col">推定した数字</th><th scope="col">編集で一致した数値</th></tr></thead><tbody><tr><td><span class="model-name">6.2-astra</span></td><td>7</td><td><span class="case-result">65/65</span></td></tr><tr><td><span class="model-name">6.1-terra</span></td><td>2</td><td><span class="case-result">65/65</span></td></tr><tr><td><span class="model-name">6-luna</span></td><td>8</td><td><span class="case-result">65/65</span></td></tr></tbody></table></div>
+<p class="finding">最終層の符号反転は、その層の式から解ける。編集の成功だけでは、対象数字を読み取れたかは分からない。</p>
+<p class="fine">Astra の数字同定は最大構成で 5/10。各サイズ10問・1数字1ネットのため、認識できる規模の上限は定まらない。</p>
+<p class="sources"><a href="https://github.com/aRySt0cat/llm-weight-space-cognition">実験コード・データ</a>　 <a href="https://github.com/aRySt0cat/llm-weight-space-cognition/blob/main/results/REPORT.md">採点結果・除外理由</a></p><footer class="foot"><span>考察</span><span class="pagenum">08 / 08</span></footer></section>
+      <nav id="nav" aria-label="スライド操作">
+        <button id="prev" type="button" aria-label="前のスライド" title="前へ（←）">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m14 5-7 7 7 7" />
+          </svg>
+        </button>
+        <button id="next" type="button" aria-label="次のスライド" title="次へ（→）">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m10 5 7 7-7 7" />
+          </svg>
+        </button>
+        <button id="full" type="button" aria-label="全画面表示" title="全画面表示（F）">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9V3h6m6 0h6v6m0 6v6h-6m-6 0H3v-6" />
+          </svg>
+        </button>
+      </nav>
+    </main>
+    <script>
+      (() => {
+        const slides = [...document.querySelectorAll(".slide")];
+        const prev = document.querySelector("#prev"),
+          next = document.querySelector("#next"),
+          full = document.querySelector("#full");
+        let index = 0;
+        function show(n, updateHash) {
+          index = Math.min(slides.length - 1, Math.max(0, n));
+          slides.forEach((s, i) => {
+            s.classList.toggle("current", i === index);
+            s.setAttribute("aria-hidden", String(i !== index));
+          });
+          prev.disabled = index === 0;
+          next.disabled = index === slides.length - 1;
+          if (updateHash && location.hash !== "#" + (index + 1)) location.hash = String(index + 1);
+          document.title =
+            slides[index].querySelector("h1,h2").innerText.replace(/\n/g, " ") +
+            " ｜ " +
+            (index + 1) +
+            "/" +
+            slides.length;
+        }
+        const fromHash = () =>
+          show(/^#\d+$/.test(location.hash) ? Number(location.hash.slice(1)) - 1 : 0, false);
+        const resize = () =>
+          document.documentElement.style.setProperty(
+            "--scale",
+            Math.min(innerWidth / 1280, innerHeight / 720),
+          );
+        async function toggleFull() {
+          try {
+            if (document.fullscreenElement) await document.exitFullscreen();
+            else await document.documentElement.requestFullscreen();
+          } catch {
+            full.hidden = true;
+          }
+        }
+        document.body.classList.add("live");
+        resize();
+        fromHash();
+        addEventListener("resize", resize);
+        addEventListener("hashchange", fromHash);
+        prev.onclick = () => show(index - 1, true);
+        next.onclick = () => show(index + 1, true);
+        full.onclick = toggleFull;
+        if (!document.fullscreenEnabled) full.style.display = "none";
+        addEventListener("keydown", (e) => {
+          if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+          if ((e.key === " " || e.key === "Enter") && e.target.closest("button,a")) return;
+          if (["ArrowRight", "PageDown", " "].includes(e.key)) show(index + 1, true);
+          else if (["ArrowLeft", "PageUp"].includes(e.key)) show(index - 1, true);
+          else if (e.key === "Home") show(0, true);
+          else if (e.key === "End") show(slides.length - 1, true);
+          else if (e.key.toLowerCase() === "f") toggleFull();
+          else return;
+          e.preventDefault();
+        });
+        let start;
+        addEventListener(
+          "touchstart",
+          (e) => {
+            start = e.touches.length === 1 ? [e.touches[0].clientX, e.touches[0].clientY] : null;
+          },
+          { passive: true },
+        );
+        addEventListener(
+          "touchend",
+          (e) => {
+            if (!start) return;
+            const dx = e.changedTouches[0].clientX - start[0],
+              dy = e.changedTouches[0].clientY - start[1];
+            if (Math.abs(dx) > 55 && Math.abs(dx) > 2 * Math.abs(dy)) show(index - Math.sign(dx), true);
+            start = null;
+          },
+          { passive: true },
+        );
+      })();
+    </script>
+  </body>
+</html>
