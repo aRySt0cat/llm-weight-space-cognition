@@ -1,6 +1,6 @@
 # LLM は数値列だけで学習済みネットワークを読めるか
 
-同一の学習済みネットワークを **gpt-6.1-terra** と **gpt-6-luna** に提示し、重みから MNIST 分類器の対象数字を推定する実験と、指定された動作に合わせて重みを編集する実験を行う。各モデルに数字の同定50問と4ビットの数値編集4問を出題し、別途 MNIST の出力層編集8問を追加した。推論の reasoning effort は両モデルとも medium。
+同一の学習済みネットワークを **gpt-6.1-terra** と **gpt-6-luna** に提示し、重みから MNIST 分類器の対象数字を推定する実験と、指定された動作に合わせて重みを編集する実験を行う。各モデルに MNIST の数字同定50問と4ビットの数値編集4問を出題し、追加実験として MNIST の出力層編集8問と7セグメントの数字同定10問を用意した。推論の reasoning effort は両モデルとも medium。
 
 [実測結果と解釈](results/REPORT.md) ・ [全問の採点表](results/trials.csv) ・ [事前に固定した手順](PROTOCOL.md)
 
@@ -17,6 +17,10 @@ MNIST の画像を 2×2 の平均プーリングで 14×14 にし、0〜9 の各
 | 196→128→64→1 | 33,537 | 285,692–292,204 | 122,941–130,669 |
 
 バイト数には設問とテンソルの区切りも含む。ASCII の各記号をすべて 1 トークンと数えても 30 万以内に収まる。参考値は `o200k_base` で計数した。実行モデル固有のトークン使用量は取得していない。チャットのシステム指示、配信時の受領符号、思考・出力はこの表の対象外。
+
+## 8パラメータの数字同定（追加対照）
+
+7セグメント表示で、7個の重みとバイアスから、どの数字を検出する線形判定器かを答える。同じ10択でも入力の各次元に「右上」「中央」などの直接的な意味がある。各数字の判定器を全128点灯パターンで学習・照合した。全10問を追加実験の回答収集前にコミット `4e41f92` で固定した。[生成方法・全問](segment/README.md)
 
 ## 数値編集
 
@@ -50,10 +54,13 @@ python controls.py probe --data /tmp/weight-space/mnist.npz
 python editing.py generate
 python trials.py stage
 python controls.py tokens
+python seven_segment.py stage
+python seven_segment.py score
 python inversion.py stage
 python inversion.py score --data /tmp/weight-space/mnist.npz
 python analyze.py
 python plot_results.py
+python controls.py illustrate --data /tmp/weight-space/mnist.npz
 ```
 
 訓練から反復する場合は `python prepare.py prepare --data /tmp/weight-space/mnist.npz --jobs 3` を使う。数値ライブラリが異なる環境では再学習の端数が変わりうる。公開テキストはそれ自体が復元可能なチェックポイント。[学習レシピ](fixtures/README.md)

@@ -40,7 +40,7 @@ def draw():
         for spine in ax.spines.values():
             spine.set_visible(False)
     axes[-1].legend(handles=[Patch(facecolor=c, label=l) for c, l in zip(colors.values(),
-                        ["Correct digit", "Wrong digit", "Invalid answer", "Unverified delivery"], strict=True)],
+                        ["Correct digit", "Wrong digit", "Invalid answer", "Excluded / pending"], strict=True)],
                     loc="upper center", bbox_to_anchor=(.5, -.24), ncol=4, frameon=False)
     fig.suptitle("Reading MNIST classifiers from their weights", fontsize=18, fontweight="bold")
     fig.savefig(ROOT / "results/predictions.png", dpi=160)

@@ -38,6 +38,26 @@ def holm(ps):
     return result
 
 
+def global_permutation_p(rows):
+    """Relabel the ten digit identities once for all tiers, preserving repeated-digit dependence."""
+    table = [[0] * 10 for _ in range(10)]
+    for row in rows:
+        if row["guess"] is not None:
+            table[row["target"]][row["guess"]] += 1
+    hits = sum(table[d][d] for d in range(10))
+
+    @cache
+    def tail(used, needed):
+        i = used.bit_count()
+        if needed <= 0:
+            return factorial(10 - i)
+        if i == 10:
+            return 0
+        return sum(tail(used | (1 << j), needed - table[i][j]) for j in range(10) if not used & (1 << j))
+
+    return tail(0, hits) / factorial(10)
+
+
 def write_csv(name, records):
     with (OUT / name).open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=records[0].keys())
@@ -113,6 +133,33 @@ def analyze():
             if entry["perm_p"] is not None:
                 entry["holm_p"] = adjusted[tier]
     write_csv("recognition.csv", stats)
+    pooled = []
+    for model in MODELS:
+        rows = [r for r in evaluated if r["model"] == model and r["tier"] in TIERS and r["delivered"]]
+        valid = sum(r["valid_answer"] for r in rows)
+        pooled.append(dict(model=model, eligible=len(rows), valid_digits=valid,
+                           correct=sum(r["correct"] for r in rows), expected_under_permutation=valid / 10,
+                           exploratory_p=global_permutation_p(rows)))
+    adjusted = holm({r["model"]: r["exploratory_p"] for r in pooled})
+    for row in pooled:
+        row["holm_two_models"] = adjusted[row["model"]]
+    write_csv("pooled_exploratory.csv", pooled)
+    # Secondary sensitivity analysis. Include observed outbound-only tool deviations
+    # with complete receipts; never promote these cases to the primary result.
+    outbound_ids = {(r["model"], r["id"]) for r in lines(OUT / "deviations.jsonl") if r["type"] == "outbound_only"}
+    sensitivity = []
+    for model in MODELS:
+        for tier in TIERS:
+            rows = [r for r in evaluated if r["model"] == model and r["tier"] == tier]
+            accepted = [r for r in rows if r["delivered"]]
+            outbound = [r for r in rows if r["status"] == "tool_violation" and r["receipts_match"]
+                        and (model, r["id"]) in outbound_ids]
+            guesses = [r["guess"] for r in accepted] + [r["excluded_guess"] for r in outbound]
+            hits = sum(r["correct"] for r in accepted) + sum(r["excluded_would_match"] is True for r in outbound)
+            sensitivity.append(dict(model=model, tier=tier, primary_n=len(accepted), extra_n=len(outbound),
+                                    total_n=len(guesses), correct=hits,
+                                    perm_p=permutation_p(guesses, hits) if len(guesses) == 10 else None))
+    write_csv("sensitivity.csv", sensitivity)
     paired = []
     for tier in [*TIERS, "edit"]:
         groups = {m: {r["id"]: r for r in evaluated if r["model"] == m and r["tier"] == tier and r["delivered"]}

@@ -1,0 +1,1 @@
+{"model":"gpt-6.1-terra","effort":"medium","id":"6e12c89a7e501dca","agent":"/root/run_terra/r48","status":"completed","delivery_verified":true,"prompt_sha256":"f7e9c23c0c7ad4e386330d9f9b7cc4bab4dec4ab724a7051b138f2fd5f4ab922","raw":"{\"answer\":{\"digit\":4},\"receipts\":[\"08e41855\",\"29da9710\",\"c11e4c6e\",\"8c8cc94e\",\"e085a756\"]}\n"}
