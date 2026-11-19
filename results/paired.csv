@@ -1,7 +1,7 @@
 tier,common,both_correct,terra_only,luna_only,both_failed
-linear,3,0,1,0,2
-h4,3,0,0,0,3
-h32,3,0,0,1,2
-h32x32,2,0,0,1,1
-h128x64,2,0,1,0,1
-edit,3,2,1,0,0
+linear,6,0,1,0,5
+h4,5,0,0,0,5
+h32,5,0,0,1,4
+h32x32,5,0,2,1,2
+h128x64,3,0,1,1,1
+edit,4,2,2,0,0

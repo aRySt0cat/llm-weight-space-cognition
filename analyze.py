@@ -61,7 +61,8 @@ def analyze():
         for model in MODELS:
             record = dict(id=uid, model=model, tier=trial["tier"], params=digits[uid]["params"] if uid in digits else 30,
                           o200k_base=sizes[uid]["o200k_base"], target=digits[uid]["digit"] if uid in digits else None,
-                          status="not_run", delivered=False, valid_answer=False, guess=None, correct=False,
+                          status="not_run", receipts_match=False, delivered=False, valid_answer=False, guess=None, correct=False,
+                          excluded_guess=None, excluded_would_match=None,
                           correct_values=None, max_abs_error=None)
             evaluated.append(record)
             path = OUT / model / (uid + ".json")
@@ -71,21 +72,26 @@ def analyze():
             assert (raw["model"], raw["id"], raw["prompt_sha256"]) == (model, uid, trial["sha256"])
             assert raw["agent"] not in used_agents, f"Reused respondent {raw['agent']}"
             used_agents.add(raw["agent"])
-            delivery = raw["status"] == "completed" and has_receipts(raw["raw"], trial["receipts"])
+            receipt_match = has_receipts(raw["raw"], trial["receipts"])
+            delivery = raw["status"] == "completed" and receipt_match
             assert raw["delivery_verified"] == delivery
-            record.update(status=raw["status"], delivered=delivery)
-            if not delivery:
-                continue
+            record.update(status=raw["status"], receipts_match=receipt_match, delivered=delivery)
             try:
                 envelope = read_answer(raw["raw"])
                 answer = envelope.get("answer") if isinstance(envelope, dict) else None
             except ValueError:
                 answer = None
+            digit_answer = (isinstance(answer, dict) and set(answer) == {"digit"}
+                           and type(answer["digit"]) is int and 0 <= answer["digit"] <= 9)
+            if not delivery:
+                if uid in digits and digit_answer:
+                    record.update(excluded_guess=answer["digit"], excluded_would_match=answer["digit"] == record["target"])
+                continue
             if uid in edits:
                 result = score(edits[uid], answer)
                 record.update(valid_answer=result["error"] is None, correct=result["passed"],
                               correct_values=result["correct_values"], max_abs_error=result["max_abs_error"])
-            elif isinstance(answer, dict) and set(answer) == {"digit"} and type(answer["digit"]) is int and 0 <= answer["digit"] <= 9:
+            elif digit_answer:
                 record.update(valid_answer=True, guess=answer["digit"], correct=answer["digit"] == record["target"])
     write_csv("trials.csv", evaluated)
     stats = []
