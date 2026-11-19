@@ -275,6 +275,92 @@
         color: #bdd1ca;
         font-size: 15px;
       }
+      .probe-slide .flow {
+        margin: 18px 6px 8px;
+      }
+      .probe-slide .probe-note {
+        font-size: 19px;
+      }
+      .worked {
+        display: grid;
+        grid-template-columns: 1.08fr 1fr;
+        gap: 44px;
+        margin-top: 28px;
+        align-items: start;
+      }
+      .worked .sample {
+        padding: 24px 26px;
+      }
+      .worked p {
+        margin-top: 12px;
+      }
+      .worked .sample pre,
+      .worked .explain pre {
+        font-size: 20px;
+        line-height: 1.55;
+        margin: 14px 0 6px;
+        white-space: pre-wrap;
+      }
+      .worked .sample .ask {
+        border-top: 1px solid #547274;
+        padding-top: 14px;
+      }
+      .answer-box {
+        margin-top: 17px;
+        padding: 12px 19px;
+        background: var(--tint);
+      }
+      .answer-box b {
+        font-size: 18px;
+        color: var(--teal);
+      }
+      .worked .answer-box pre {
+        margin-top: 2px;
+      }
+      .segment-answer {
+        display: flex;
+        align-items: center;
+        gap: 25px;
+        margin-bottom: 17px;
+      }
+      .segment-answer .seg-tile {
+        width: 123px;
+        height: 149px;
+      }
+      .segment-answer svg {
+        height: 120px;
+      }
+      .score-strip {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 18px;
+        border-top: 1px solid var(--rule);
+        padding-top: 14px;
+      }
+      .score-strip h3 {
+        font-size: 21px;
+      }
+      .score-strip small {
+        color: var(--muted);
+        font-size: 16px;
+        font-weight: 500;
+      }
+      .score-example {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 20px;
+      }
+      .score-example b {
+        font: 700 27px var(--num);
+        color: var(--teal);
+      }
+      .score-image {
+        width: 55px;
+        padding: 3px;
+        background: var(--dark);
+      }
       .question {
         border-left: 4px solid var(--teal);
         padding: 5px 0 3px 23px;
@@ -492,25 +578,6 @@
       .patch {
         background: var(--tint);
         padding: 25px 29px 24px;
-      }
-      .patch .formula {
-        font-size: 32px;
-        line-height: 1.5;
-      }
-      .patch-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: baseline;
-        margin-top: 10px;
-        border-top: 1px solid #bdd0c8;
-        padding-top: 8px;
-      }
-      .patch-row span {
-        font-size: 19px;
-      }
-      .patch-row b {
-        font: 700 30px var(--num);
-        color: var(--teal);
       }
       .readout {
         display: grid;

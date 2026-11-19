@@ -5,6 +5,7 @@ import base64
 import csv
 from html import escape
 from io import BytesIO
+import json
 from pathlib import Path
 from statistics import mean
 import sys
@@ -15,7 +16,8 @@ from PIL import Image
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
-from prepare import dataset_path, parse_prompt
+from editing import forward, patch_network
+from prepare import dataset_path, logits, parse_prompt, pool_images
 from trials import TIERS, lines
 
 MODELS = ["gpt-6.2-astra", "gpt-6.1-terra", "gpt-6-luna"]
@@ -39,6 +41,11 @@ def csv_rows(name):
 
 def ratio(hits, n):
     return f"{hits}/{n}" if n else "—"
+
+
+def example_answer(uid):
+    record = json.loads((ROOT / "results/gpt-6.1-terra" / (uid + ".json")).read_text())
+    return json.loads(record["raw"])["answer"]
 
 
 def png(array):
@@ -223,10 +230,7 @@ def build(archive, output, draft):
     slides = []
 
     def add(section, content, kind=""):
-        n = len(slides) + 1
-        slides.append(
-            f'<section class="slide {kind}" aria-label="{n}枚目 {section}">{content}<footer class="foot"><span>{section}</span><span class="pagenum">{n:02d} / 08</span></footer></section>'
-        )
+        slides.append((section, content, kind))
 
     add(
         "2026.11.19　勉強会",
@@ -247,8 +251,9 @@ def build(archive, output, draft):
 <figure>{net_svg()}</figure></div>
 <div class="data-strip"><div class="sample"><h3>LLM に与える情報</h3><pre>widths 196 128 64 1
 {escape(excerpt)}</pre><p class="caption">層の幅と数値列の抜粋。実験では全重み・全バイアスを提示。</p></div>
-<div class="question"><h3>どの数字を検出する？</h3><p>回答は 0〜9 の1個。<br>回答役に画像や推論例は渡さない。</p></div></div>
-<p class="bottom-note">画像を各数字5枚ずつ入力し、平均ロジットが最大の数字を選ぶと、分類器50個すべての対象を特定できた。</p>""",
+<div class="question"><h3>どの数字を検出する？</h3><p>回答は 0〜9 の1個。<br>LLMには画像や出力例を渡さない。</p></div></div>
+<p class="bottom-note probe-note"><b>実験者が Python で行った別の確認</b>　各分類器に各数字5枚の画像を入力。数字ごとに判定スコア（ロジット）を平均し、最大の数字を選ぶと50個すべてで正解した。画像もスコアも LLM には渡していない。</p>""",
+        "probe-slide",
     )
 
     arch_rows = [
@@ -312,6 +317,25 @@ def build(archive, output, draft):
 <p class="fine">横軸はパラメータ数。{significance}（片側置換検定、Holm補正5%）。<br>無効回答は誤答。6-luna の許可外の送信6件まで含めると 5/50。</p>""",
     )
 
+    segment_id = "0a35445ba13982da"
+    seg_prompt = (ROOT / "segment/prompts" / (segment_id + ".txt")).read_text()
+    weights_line, bias_line = seg_prompt.strip().splitlines()[-2:]
+    seg_answer = example_answer(segment_id)
+    add(
+        "数字の同定　7セグメントの出題例",
+        f"""<h2>どの数字の点灯パターンを検出する？</h2>
+<p class="intro">数字ごとに専用の分類器を1個、計10個学習した。分類器への入力は7本の点灯状態（点灯1、消灯0）。</p>
+<div class="worked"><div class="sample"><h3>LLM に与えた情報（設問を和訳）</h3>
+<p>入力の並びは、上・右上・右下・下・左下・左上・中央。点灯部分の重みの合計にバイアスを足し、正なら検出。</p>
+<pre>{escape(weights_line)}
+{escape(bias_line)}</pre><p class="caption">これが1個の分類器の全8パラメータ。</p>
+<p class="ask">この分類器が検出する数字を1個答えてください。</p></div>
+<div class="explain"><div class="segment-answer"><figure class="seg-tile">{segment_svg()}</figure><div>
+<p class="small-title">6.1-terra の回答例</p><pre>{escape(json.dumps(seg_answer))}</pre></div></div>
+<h3>上・右上・右下の3本だけが点灯すると</h3><p>得点は 2 + 2 + 2 − 5 = <b>+1</b>。<br>右の2本だけの「1」では 2 + 2 − 5 = <b>−1</b>。</p></div></div>
+<p class="bottom-note">点灯図は解説用。LLM が受け取ったのは、位置の説明・計算式・8個の数値だった。</p>""",
+    )
+
     seg_rows = []
     for j, m in enumerate(MODELS):
         good = [r for r in segment if r["model"] == m and r["eligible"] == "True"]
@@ -325,8 +349,8 @@ def build(archive, output, draft):
         )
     add(
         "数字の同定　対照課題",
-        f"""<h2>入力の意味が分かる7セグメント表示</h2>
-<p class="intro">各入力が対応する位置を明示し、7個の重みとバイアスから対象数字を答えさせた。</p>
+        f"""<h2>7セグメントの対象数字は全モデルが10/10</h2>
+<p class="intro">実験者は各分類器に全128通りの点灯パターンを入力し、対象のパターンだけが正の得点になることを確認した。</p>
 <div class="control"><div><div class="visual-pair">
 <figure><div class="seg-tile">{segment_svg()}</div><figcaption>7セグメントの「7」</figcaption></figure>
 <figure><div class="map-tile">{weight_image(manifest)}</div><figcaption>MNIST の「7」の重み<br>赤は正、青は負</figcaption></figure></div>
@@ -334,6 +358,42 @@ def build(archive, output, draft):
 <p class="caption">上・右上・右下が +2。バイアスは −5。</p></div>
 <div>{matrix_table(["正答 / 適合", "7セグメント<br>8パラメータ", "MNIST 線形<br>197パラメータ"], seg_rows)}</div></div>
 <p class="bottom-note">2つの課題では、入力表現も重みの構造も異なる。</p>""",
+    )
+
+    local_id = "17c2926789ec"
+    local = next(r for r in lines(ROOT / "edits/manifest.jsonl") if r["id"] == local_id)
+    net = local["network"]
+    local_answer = example_answer(local_id)
+    edited_net = patch_network(net, local_answer)
+    changes = "\n".join(
+        f"{v['tensor']}[{', '.join(map(str, v['index']))}] = {v['value']}"
+        for v in local_answer["replacements"]
+    )
+    behavior = []
+    for x in ([0, 0, 0, 0], [0, 0, 0, 1]):
+        old, new = forward(net, x), forward(edited_net, x)
+        behavior.append(
+            [
+                "".join(map(str, x)),
+                *(f"{a:g} → {b:g}" for a, b in zip(old, new, strict=True)),
+            ]
+        )
+    add(
+        "数値編集　4ビットの出題例",
+        f"""<h2>4番目のビットを、片方の出力だけ逆に読む</h2>
+<p class="intro">4個の0か1を受け取り、2個の数値 y₀・y₁ を返すネット。指定した動作だけを編集できるかを試す。</p>
+<div class="worked"><div class="sample"><h3>LLM に与えた情報（実際の値を抜粋）</h3>
+<p>全30パラメータと2つの計算式を提示。<br>h = ReLU(W1 x + b1)、y = W2 h + b2。</p>
+<pre>W1[3] = {net["W1"][3]}
+b1[3] = {net["b1"][3]}
+W2[1] = {net["W2"][1]}
+b2[1] = {net["b2"][1]}</pre>
+<p class="caption">添字は0から。W は重み、b はバイアス。</p></div>
+<div class="explain"><h3>LLM への指示（和訳）</h3>
+<p>同じ入力で y₀ は元の値を保つ。y₁ だけは、4番目のビットを反転して元のネットに入れた場合の値を返すように。</p>
+<p>出力層の最大2か所について、場所と新しい値を答えてください。</p>
+<div class="answer-box"><b>6.1-terra の回答例</b><pre>{escape(changes)}</pre></div></div></div>
+<p class="bottom-note">たとえば入力が 0000 なら、y₀ は元の 0000 の値、y₁ は元の 0001 の値を返すのが目標。</p>""",
     )
 
     edit_rows = [
@@ -346,15 +406,55 @@ def build(archive, output, draft):
     ]
     add(
         "数値編集　4ビット入力",
-        f"""<h2>一方の出力だけで、1ビットを反転する</h2>
-<p class="intro">30パラメータのネットを4個用意。出力層の数値を最大2個まで変更できる。</p>
-<div class="edit-grid"><div class="patch"><h3>1問目の編集例</h3><p class="formula">−2x₃ → −2 + 2x₃</p>
-<p class="caption">隠れユニットの出力は 1.25x₃</p>
-<div class="patch-row"><span>出力の重み</span><b>−1.6 → +1.6</b></div>
-<div class="patch-row"><span>バイアス</span><b>7 → 5</b></div></div>
-<div>{matrix_table(["モデル", "成功 / 適合", "合致した出力値"], edit_rows)}
+        f"""<h2>編集後のネットを、全16入力で確かめる</h2>
+<p class="intro">採点側が回答どおりに数値を差し替え、2個の出力を計算した。表の値は出題後の検算例。</p>
+<div class="edit-grid"><div class="patch"><h3>前ページの例（編集前 → 編集後）</h3>
+{matrix_table(["入力", "y₀ を保つ", "y₁ を入れ替える"], behavior)}
+<p class="fine">y₁ への寄与は −2x₃ → −2(1 − x₃)。重み −1.6 → +1.6 とバイアス 7 → 5 で実現した。</p></div>
+<div><h3>4問の採点結果</h3>{matrix_table(["モデル", "成功 / 適合", "合致した出力値"], edit_rows)}
 <p class="fine">1問につき全16入力 × 2出力。全32値が許容誤差0.001以内で成功。</p></div></div>
 <p class="bottom-note">6-luna の失敗2問は、重みの符号を反転し、必要なバイアス変更を省略していた。</p>""",
+    )
+
+    small_seven = next(r for r in manifest if r["tier"] == "h4" and r["digit"] == 7)
+    small_layers = parse_prompt(
+        (ROOT / "fixtures/prompts" / (small_seven["id"] + ".txt")).read_text()
+    )
+    readout_id = next(
+        r["id"] for r in inv_schedule if r["source_id"] == small_seven["id"]
+    )
+    readout_answer = example_answer(readout_id)
+    w, b = small_layers[-1]
+    edited_layers = small_layers[:-1] + [
+        (
+            np.array(readout_answer["weights"]).reshape(w.shape),
+            np.array([readout_answer["bias"]]),
+        )
+    ]
+    digits = [7, 1]
+    x = pool_images(np.stack([pixels[d] for d in digits]))
+    scores = zip(digits, logits(small_layers, x), logits(edited_layers, x), strict=True)
+    score_examples = "".join(
+        f'<div class="score-example"><span class="score-image">{examples[d]}</span>'
+        f"<span>「{d}」の画像</span><b>{old:+.2f} → {new:+.2f}</b></div>"
+        for d, old, new in scores
+    )
+    add(
+        "数値編集　MNISTの出題例",
+        f"""<h2>同じ画像に対する判定を逆向きにする</h2>
+<p class="intro">ロジットは分類器の判定スコア。正なら対象数字を、負なら「それ以外」を支持する。</p>
+<div class="worked"><div class="sample"><h3>LLM に与えた情報（793パラメータの例）</h3>
+<p>層の幅、計算式、全層の重み・バイアスを提示。ここでは最後の1ユニットを抜粋。</p>
+<pre>widths 196 4 1
+layer 2
+bias {b.item():g}
+{" ".join(format(v, "g") for v in w.ravel())}</pre>
+<p class="caption">この4つの重みと1つのバイアスが編集対象。</p></div>
+<div class="explain"><h3>LLM への指示（和訳）</h3>
+<p>隠れ層を固定し、どの入力でもスコアが元の −1 倍になるように。最後の重みを元の順で全て、新しいバイアスとともに提出してください。</p>
+<div class="answer-box"><b>6.1-terra の回答例</b><pre>weights = {readout_answer["weights"]}
+bias = {readout_answer["bias"]}</pre></div></div></div>
+<p class="bottom-note">目的は、指定した判定の反転を重みの編集で実現できるかを測ること。LLM には画像も正解の数字も渡していない。</p>""",
     )
 
     inv_rows = []
@@ -373,11 +473,12 @@ def build(archive, output, draft):
         inv_rows.append(row)
     add(
         "数値編集　MNIST",
-        f"""<h2>最終層を編集し、出力の符号を反転する</h2>
-<p class="intro">すべての入力でロジットを −1 倍にする。最終層の全重みとバイアスを数値で提出。</p>
+        f"""<h2>編集後は、画像ごとのスコアが −1 倍になる</h2>
+<p class="intro">隠れ層の出力 h を保ち、最後の重み w とバイアス b の符号をすべて反転する。図は33,537パラメータの構成。</p>
 <div class="readout"><figure>{net_svg(True)}<div class="formula">w · h + b → (−w) · h − b</div></figure>
 <div>{matrix_table(["モデル", "793パラメータ<br>5値を編集", "33,537パラメータ<br>65値を編集"], inv_rows)}
 <p class="fine">手順に適合し全値一致した数 / 初回の割当数。<br>提出値を代入して、テスト画像1万枚でも照合。</p></div></div>
+<div class="score-strip"><h3>採点側での実測例<br><small>前ページの「7」分類器</small></h3>{score_examples}</div>
 <p class="bottom-note">最大構成の6-luna は、ほかに2件が全値一致・許可外送信、1件が未完。未完の1件は独立再試行で全値一致。</p>""",
     )
 
@@ -410,11 +511,13 @@ def build(archive, output, draft):
 <p class="sources"><a href="{REPO}">実験コード・データ</a>　 <a href="{REPO}/blob/main/results/REPORT.md">採点結果・除外理由</a></p>''',
     )
 
-    assert len(slides) == 8
     template = (HERE / "template.html").read_text()
-    output.write_text(
-        template.replace("<!--SLIDES-->", "\n".join(slides)), encoding="utf-8"
+    markup = "\n".join(
+        f'<section class="slide {kind}" aria-label="{n}枚目 {section}">{content}'
+        f'<footer class="foot"><span>{section}</span><span class="pagenum">{n:02d} / {len(slides):02d}</span></footer></section>'
+        for n, (section, content, kind) in enumerate(slides, start=1)
     )
+    output.write_text(template.replace("<!--SLIDES-->", markup), encoding="utf-8")
 
 
 if __name__ == "__main__":
