@@ -1,0 +1,2 @@
+id,model,tier,recorded,delivered,status,receipts_match,valid_answer,exact,matching_scalars,total_scalars,functional_pass,max_abs_error,test_sign_agreement,excluded_exact,excluded_functional_pass
+2fe1964d880f700f,gpt-6-luna,h128x64,True,True,completed,True,True,True,65,65,True,0.0,1.0,,

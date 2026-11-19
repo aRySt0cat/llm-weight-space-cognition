@@ -52,7 +52,14 @@ def retry_eligible(model, row):
     if not path.exists():
         return False
     first = read_answer(path.read_text())
-    return first["status"] == "transport_failure" and not has_receipts(first["raw"], row["receipts"])
+    if first["status"] != "transport_failure" or has_receipts(first["raw"], row["receipts"]):
+        return False
+    try:
+        envelope = read_answer(first["raw"])
+    except ValueError:
+        envelope = None
+    answer = envelope.get("answer") if isinstance(envelope, dict) else None
+    return not isinstance(answer, dict) or not ({"weights", "bias"} & answer.keys())
 
 
 def audit(archive, retries=False):
@@ -60,6 +67,8 @@ def audit(archive, retries=False):
         images = pool_images(d["x_test"])
     output = []
     used_agents = set()
+    deviations = ROOT / "results/deviations.jsonl"
+    outbound = {(r["model"], r["id"]) for r in lines(deviations) if r["type"] == "outbound_only"} if deviations.exists() else set()
     for row in lines(SCHEDULE):
         text = source_text(row)
         assert sha256(text.encode()).hexdigest() == row["source_sha256"]
@@ -71,9 +80,10 @@ def audit(archive, retries=False):
         for model in MODELS:
             if retries and not retry_eligible(model, row):
                 continue
-            result = dict(id=row["id"], model=model, tier=row["tier"], recorded=False, delivered=False,
+            result = dict(id=row["id"], model=model, tier=row["tier"], recorded=False, delivered=False, status="not_run", receipts_match=False,
                           valid_answer=False, exact=False, matching_scalars=None, total_scalars=len(expected),
-                          functional_pass=False, max_abs_error=None, test_sign_agreement=None)
+                          functional_pass=False, max_abs_error=None, test_sign_agreement=None,
+                          excluded_exact=None, excluded_functional_pass=None)
             output.append(result)
             base = ROOT / "results"
             path = (base / "retries" if retries else base) / model / (row["id"] + ".json")
@@ -83,10 +93,12 @@ def audit(archive, retries=False):
             assert (response["id"], response["model"], response["prompt_sha256"]) == (row["id"], model, row["sha256"])
             assert response["agent"] not in used_agents
             used_agents.add(response["agent"])
-            delivered = response["status"] == "completed" and has_receipts(response["raw"], row["receipts"])
+            matched = has_receipts(response["raw"], row["receipts"])
+            delivered = response["status"] == "completed" and matched
             assert delivered == response["delivery_verified"]
-            result.update(recorded=True, delivered=delivered)
-            if not delivered:
+            result.update(recorded=True, delivered=delivered, receipts_match=matched, status=response["status"])
+            include_excluded = matched and response["status"] == "tool_violation" and (model, row["id"]) in outbound
+            if not delivered and not include_excluded:
                 continue
             try:
                 answer = read_answer(response["raw"])["answer"]
@@ -104,7 +116,11 @@ def audit(archive, retries=False):
             changed = layers[:-1] + [(submitted[:-1, None], submitted[-1:])]
             actual = logits(changed, images)
             err = float(np.max(np.abs(actual - reference)))
-            result.update(valid_answer=True, exact=bool(np.array_equal(submitted, expected)),
+            exact = bool(np.array_equal(submitted, expected))
+            if not delivered:
+                result.update(excluded_exact=exact, excluded_functional_pass=err <= 1e-8)
+                continue
+            result.update(valid_answer=True, exact=exact,
                           matching_scalars=int(np.sum(submitted == expected)), max_abs_error=err,
                           functional_pass=err <= 1e-8, test_sign_agreement=float(np.mean((actual > 0) == (reference > 0))))
     if not output:
