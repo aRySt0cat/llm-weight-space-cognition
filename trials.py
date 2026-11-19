@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import random
+import re
 import sys
 from pathlib import Path
 
@@ -33,6 +34,20 @@ def packets(data, limit=14000):
         yield bytes(block)
 
 
+def stage_one(uid, data):
+    assert data.isascii() and len(data) <= 300_000
+    directory = STAGE / uid
+    directory.mkdir(exist_ok=True, parents=True)
+    blocks = list(packets(data))
+    assert b"".join(blocks) == data
+    receipts = []
+    for n, block in enumerate(blocks, 1):
+        receipt = hashlib.sha256(uid.encode() + str(n).encode() + block).hexdigest()[:8]
+        receipts.append(receipt)
+        (directory / f"{n:02}.txt").write_bytes(block + f"\n[packet {n}/{len(blocks)} receipt {receipt}]\n".encode())
+    return dict(id=uid, parts=len(blocks), receipts=receipts, sha256=hashlib.sha256(data).hexdigest())
+
+
 def stage():
     groups = {t: [] for t in ["edit", *TIERS]}
     for folder in ["fixtures", "edits"]:
@@ -40,18 +55,9 @@ def stage():
             uid = row["id"]
             tier = row["tier"] if folder == "fixtures" else "edit"
             data = (ROOT / folder / "prompts" / (uid + ".txt")).read_bytes()
-            assert data.isascii() and len(data) <= 300_000
-            directory = STAGE / uid
-            directory.mkdir(exist_ok=True, parents=True)
-            blocks = list(packets(data))
-            assert b"".join(blocks) == data
-            receipts = []
-            for n, block in enumerate(blocks, 1):
-                receipt = hashlib.sha256(uid.encode() + str(n).encode() + block).hexdigest()[:8]
-                receipts.append(receipt)
-                (directory / f"{n:02}.txt").write_bytes(block + f"\n[packet {n}/{len(blocks)} receipt {receipt}]\n".encode())
+            metadata = stage_one(uid, data)
             groups[tier].append(dict(id=uid, task="edit" if tier == "edit" else "digit", tier=tier,
-                                     parts=len(blocks), receipts=receipts, sha256=hashlib.sha256(data).hexdigest()))
+                                     parts=metadata["parts"], receipts=metadata["receipts"], sha256=metadata["sha256"]))
     for group in groups.values():
         group.sort(key=lambda r: r["id"])
         random.Random(19112026).shuffle(group)
@@ -65,15 +71,22 @@ def task(row):
     return f"""Independent blind trial. Read the assigned {row['parts']} packet(s) in numerical order, paths {path}/01.txt through {path}/{row['parts']:02}.txt. For transport only, use functions.exec with exactly one cat per packet, e.g. // @exec: {{"max_output_tokens":10000}} on line 1, then text((await tools.exec_command({{cmd:"cat {path}/01.txt", max_output_tokens:16000}})).output). Use no other commands, files, analysis tools, code or agents. Read every packet fully. Infer the answer yourself from the displayed text. Keep this task in one context. If a packet is truncated, report delivery failure; if context was compacted, report delivery failure. Return one JSON object with "answer" containing the exact object requested in the assigned prompt and "receipts" containing the final eight-character receipt from each packet in order. No explanation."""
 
 
-def record(model, uid, agent, raw, status):
-    row = next(x for x in lines(ROOT / "schedule.jsonl") if x["id"] == uid)
+def has_receipts(raw, expected):
+    """Read the delivery field independently of the syntax of the submitted answer."""
+    matches = re.findall(r'"receipts"\s*:\s*(\[[^\[\]]*\])', raw)
+    if len(matches) != 1:
+        return False
+    try:
+        return json.loads(matches[0]) == expected
+    except ValueError:
+        return False
+
+
+def record(model, uid, agent, raw, status, schedule=None):
+    row = next(x for x in lines(schedule or ROOT / "schedule.jsonl") if x["id"] == uid)
     dest = ROOT / "results" / model / (uid + ".json")
     dest.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        envelope = json.loads(raw)
-    except (TypeError, ValueError):
-        envelope = None
-    delivered = status == "completed" and isinstance(envelope, dict) and envelope.get("receipts") == row["receipts"]
+    delivered = status == "completed" and has_receipts(raw, row["receipts"])
     payload = dict(model=model, effort="medium", id=uid, agent=agent, status=status,
                    delivery_verified=delivered, prompt_sha256=row["sha256"], raw=raw)
     with dest.open("x") as file:
